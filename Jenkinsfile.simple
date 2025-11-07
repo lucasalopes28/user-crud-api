@@ -135,8 +135,7 @@ pipeline {
                 }
             }
         }
-    }
-    
+        
         stage('Deploy to Production') {
             when {
                 anyOf {
