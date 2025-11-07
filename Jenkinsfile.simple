@@ -2,115 +2,65 @@ pipeline {
     agent any
     
     environment {
-        // Application settings
         APP_NAME = 'user-crud-api'
-        APP_VERSION = '1.0.0'
         IMAGE_TAG = "${APP_NAME}:${BUILD_NUMBER}"
-        
-        // Container settings
         STAGING_PORT = '8080'
         PROD_PORT = '8081'
-        
-        // GitHub repository
-        GITHUB_REPO = 'https://github.com/lucasalopes28/user-crud-api'
     }
     
     stages {
         stage('Checkout') {
             steps {
-                echo 'Checking out source code...'
+                echo 'Checking out code from GitHub...'
                 checkout scm
             }
         }
         
-        stage('Environment Check') {
+        stage('Build Docker Image') {
             steps {
-                echo 'Checking build environment...'
-                sh '''
-                    echo "=== Build Environment ==="
-                    echo "Java version:"
-                    java -version || echo "Java not found"
-                    echo "Docker version:"
-                    docker --version || echo "Docker not found"
-                    echo "Current directory: $(pwd)"
-                    echo "Files in workspace:"
-                    ls -la
-                '''
-            }
-        }
-        
-        stage('Build & Test in Docker') {
-            steps {
-                echo 'Building and testing application in Docker...'
+                echo 'Building Docker image...'
                 script {
-                    // Build the Docker image (includes Maven build and test)
                     sh "docker build -t ${IMAGE_TAG} ."
-                    
-                    // Tag with latest
                     sh "docker tag ${IMAGE_TAG} ${APP_NAME}:latest"
-                    
-                    echo "Docker image built successfully: ${IMAGE_TAG}"
-                    sh "docker images | grep ${APP_NAME}"
+                    echo "✅ Docker image built: ${IMAGE_TAG}"
                 }
             }
         }
         
-        stage('Test Docker Image') {
+        stage('Test Image') {
             steps {
                 echo 'Testing Docker image...'
-                script {
-                    // Run a quick test of the Docker image
-                    sh """
-                        # Test that the image runs
-                        docker run --rm --name test-${BUILD_NUMBER} ${IMAGE_TAG} java -version
-                        
-                        # Check image details
-                        echo "Image size and info:"
-                        docker images ${APP_NAME}
-                    """
-                }
+                sh """
+                    docker run --rm ${IMAGE_TAG} java -version
+                    docker images | grep ${APP_NAME}
+                """
             }
         }
         
         stage('Deploy to Staging') {
             steps {
+                echo 'Deploying to staging...'
                 script {
-                    echo 'Deploying to staging environment in Docker...'
-                    
-                    // Stop and remove existing staging container
                     sh """
-                        docker stop ${STAGING_CONTAINER} || true
-                        docker rm ${STAGING_CONTAINER} || true
-                    """
-                    
-                    // Run new staging container
-                    sh """
+                        # Stop existing staging container
+                        docker stop ${APP_NAME}-staging || true
+                        docker rm ${APP_NAME}-staging || true
+                        
+                        # Run new staging container
                         docker run -d \
-                            --name ${STAGING_CONTAINER} \
-                            --network ${DOCKER_NETWORK} \
+                            --name ${APP_NAME}-staging \
                             -p ${STAGING_PORT}:8080 \
                             -e SPRING_PROFILES_ACTIVE=staging \
-                            -e JAVA_OPTS="-Xmx512m -Xms256m" \
                             ${IMAGE_TAG}
+                        
+                        echo "✅ Staging deployed on port ${STAGING_PORT}"
                     """
                     
-                    echo "Staging container started: ${STAGING_CONTAINER}"
-                    
-                    // Wait and test the application
+                    // Wait and check health
                     sh """
-                        echo "Waiting for staging application to start..."
                         sleep 30
-                        
-                        # Show container status
-                        docker ps | grep ${STAGING_CONTAINER}
-                        
-                        # Test the endpoint
-                        if curl -f http://localhost:${STAGING_PORT}/actuator/health 2>/dev/null; then
-                            echo "Staging deployment successful!"
-                        else
-                            echo "Health check failed, showing container logs:"
-                            docker logs ${STAGING_CONTAINER}
-                        fi
+                        docker ps | grep ${APP_NAME}-staging
+                        curl -f http://localhost:${STAGING_PORT}/actuator/health || echo "⚠️  Health check pending"
                     """
                 }
             }
@@ -118,71 +68,47 @@ pipeline {
         
         stage('Integration Tests') {
             steps {
-                echo 'Running basic integration tests...'
-                script {
-                    // Simple integration tests
-                    sh """
-                        echo "Testing staging endpoints..."
-                        
-                        # Test health endpoint
-                        curl -f http://localhost:${STAGING_PORT}/actuator/health || echo "Health endpoint failed"
-                        
-                        # Test info endpoint if available
-                        curl -f http://localhost:${STAGING_PORT}/actuator/info || echo "Info endpoint not available"
-                        
-                        echo "Basic integration tests completed!"
-                    """
-                }
+                echo 'Running integration tests...'
+                sh """
+                    # Test staging endpoints
+                    curl -f http://localhost:${STAGING_PORT}/actuator/health || echo "Health endpoint test"
+                    curl -f http://localhost:${STAGING_PORT}/actuator/info || echo "Info endpoint test"
+                    echo "✅ Integration tests completed"
+                """
             }
         }
         
         stage('Deploy to Production') {
             when {
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                }
+                branch 'main'
             }
             steps {
                 script {
-                    // Simple production deployment (no blue-green)
+                    // Manual approval for production
                     input message: 'Deploy to Production?', ok: 'Deploy'
                     
                     echo 'Deploying to production...'
-                    
-                    // Stop and remove existing production container
                     sh """
-                        docker stop ${PROD_CONTAINER} || true
-                        docker rm ${PROD_CONTAINER} || true
-                    """
-                    
-                    // Run new production container
-                    sh """
+                        # Stop existing production container
+                        docker stop ${APP_NAME}-prod || true
+                        docker rm ${APP_NAME}-prod || true
+                        
+                        # Run new production container
                         docker run -d \
-                            --name ${PROD_CONTAINER} \
-                            --network ${DOCKER_NETWORK} \
+                            --name ${APP_NAME}-prod \
                             -p ${PROD_PORT}:8080 \
                             -e SPRING_PROFILES_ACTIVE=prod \
-                            -e JAVA_OPTS="-Xmx1g -Xms512m" \
                             --restart unless-stopped \
                             ${IMAGE_TAG}
+                        
+                        echo "✅ Production deployed on port ${PROD_PORT}"
                     """
                     
-                    // Wait and test production
+                    // Wait and check health
                     sh """
-                        echo "Waiting for production application to start..."
                         sleep 30
-                        
-                        # Show container status
-                        docker ps | grep ${PROD_CONTAINER}
-                        
-                        # Test production endpoint
-                        if curl -f http://localhost:${PROD_PORT}/actuator/health 2>/dev/null; then
-                            echo "Production deployment successful!"
-                        else
-                            echo "Production health check failed!"
-                            docker logs ${PROD_CONTAINER}
-                        fi
+                        docker ps | grep ${APP_NAME}-prod
+                        curl -f http://localhost:${PROD_PORT}/actuator/health || echo "⚠️  Health check pending"
                     """
                 }
             }
@@ -190,19 +116,15 @@ pipeline {
         
         stage('Cleanup') {
             steps {
-                echo 'Cleaning up old Docker images...'
+                echo 'Cleaning up old images...'
                 sh """
                     # Remove old images (keep last 3)
-                    docker images ${APP_NAME} --format "table {{.Tag}}" | grep -E '^[0-9]+\$' | sort -nr | tail -n +4 | while read tag; do
-                        echo "Removing old image: ${APP_NAME}:\$tag"
+                    docker images ${APP_NAME} --format "{{.Tag}}" | grep -E '^[0-9]+\$' | sort -nr | tail -n +4 | while read tag; do
                         docker rmi ${APP_NAME}:\$tag || true
                     done
                     
-                    # Clean up dangling images
+                    # Clean dangling images
                     docker image prune -f
-                    
-                    echo "Current images:"
-                    docker images | grep ${APP_NAME}
                 """
             }
         }
@@ -211,55 +133,25 @@ pipeline {
     post {
         always {
             script {
-                echo 'Pipeline cleanup...'
-                
-                // Show final status
+                echo '📊 Pipeline Summary'
                 sh """
-                    echo "Final container status:"
-                    docker ps | grep user-crud || echo "No user-crud containers running"
+                    echo "Containers:"
+                    docker ps | grep ${APP_NAME} || echo "No containers running"
                     
-                    echo "Available images:"
-                    docker images | grep ${APP_NAME} || echo "No ${APP_NAME} images found"
+                    echo "Images:"
+                    docker images | grep ${APP_NAME} || echo "No images found"
                 """
-                
-                // Archive container logs
-                sh """
-                    mkdir -p logs
-                    docker logs ${STAGING_CONTAINER} > logs/staging.log 2>&1 || echo "No staging logs"
-                    docker logs ${PROD_CONTAINER} > logs/production.log 2>&1 || echo "No production logs"
-                """
-                
-                archiveArtifacts artifacts: 'logs/*.log', allowEmptyArchive: true
             }
-            
             cleanWs()
         }
         success {
-            echo 'Docker pipeline completed successfully!'
-            sh """
-                echo "Deployment Summary:"
-                echo "- Image: ${IMAGE_TAG}"
-                echo "- Staging: http://localhost:${STAGING_PORT}"
-                echo "- Production: http://localhost:${PROD_PORT}"
-            """
+            echo '✅ Pipeline completed successfully!'
+            echo "Staging: http://localhost:${STAGING_PORT}"
+            echo "Production: http://localhost:${PROD_PORT}"
         }
         failure {
-            echo 'Docker pipeline failed!'
-            script {
-                sh """
-                    echo "Debugging information:"
-                    docker ps -a | grep user-crud || echo "No containers found"
-                    
-                    echo "Staging logs:"
-                    docker logs ${STAGING_CONTAINER} 2>&1 || echo "No staging container"
-                    
-                    echo "Production logs:"
-                    docker logs ${PROD_CONTAINER} 2>&1 || echo "No production container"
-                """
-            }
-        }
-        unstable {
-            echo 'Pipeline is unstable!'
+            echo '❌ Pipeline failed!'
+            sh "docker logs ${APP_NAME}-staging || true"
         }
     }
 }

@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Simple Jenkins Setup Script
-# Sets up Jenkins with Docker support for GitHub repository: https://github.com/lucasalopes28/user-crud-api
+# Simple Jenkins Setup for User CRUD API
+# Repository: https://github.com/lucasalopes28/user-crud-api
 
 set -e
 
-echo "🚀 Setting up Jenkins for User CRUD API..."
+echo "🚀 Setting up Jenkins with Docker support..."
 
 # Colors
 GREEN='\033[0;32m'
@@ -14,14 +14,7 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-# Configuration
-GITHUB_REPO="https://github.com/lucasalopes28/user-crud-api"
 JENKINS_URL="http://localhost:8090"
-
-echo -e "${BLUE}📋 Configuration:${NC}"
-echo -e "  Repository: ${GITHUB_REPO}"
-echo -e "  Jenkins URL: ${JENKINS_URL}"
-echo ""
 
 # Stop existing Jenkins
 echo -e "${YELLOW}🛑 Stopping existing Jenkins...${NC}"
@@ -29,88 +22,106 @@ docker-compose down 2>/dev/null || true
 
 # Start Jenkins
 echo -e "${YELLOW}🚀 Starting Jenkins...${NC}"
-docker-compose up -d jenkins
+docker-compose up -d
 
-# Wait for Jenkins
-echo -e "${YELLOW}⏳ Waiting for Jenkins to start (30 seconds)...${NC}"
+# Wait for Jenkins to start
+echo -e "${YELLOW}⏳ Waiting for Jenkins to start...${NC}"
 sleep 30
 
-# Check if running
+# Check if Jenkins is running
 if ! docker ps | grep -q jenkins-server; then
     echo -e "${RED}❌ Jenkins failed to start${NC}"
     exit 1
 fi
 
-# Install Docker CLI
-echo -e "${YELLOW}🐳 Installing Docker CLI in Jenkins...${NC}"
+# Install essential tools and plugins
+echo -e "${YELLOW}🔧 Setting up Jenkins environment...${NC}"
 docker exec -u root jenkins-server bash -c "
-    apt-get update -qq > /dev/null 2>&1 &&
-    apt-get install -y -qq curl > /dev/null 2>&1 &&
-    curl -fsSL https://get.docker.com -o get-docker.sh &&
-    sh get-docker.sh > /dev/null 2>&1 &&
-    chmod 666 /var/run/docker.sock &&
-    usermod -aG docker jenkins
-" 2>/dev/null || {
-    echo -e "${YELLOW}⚠️  Using alternative Docker installation...${NC}"
-    docker exec -u root jenkins-server bash -c "
-        apt-get update -qq > /dev/null 2>&1 &&
-        apt-get install -y -qq curl > /dev/null 2>&1 &&
-        curl -L https://download.docker.com/linux/static/stable/aarch64/docker-24.0.7.tgz | tar -xz > /dev/null 2>&1 &&
-        cp docker/docker /usr/local/bin/ &&
-        chmod +x /usr/local/bin/docker &&
-        rm -rf docker &&
-        chmod 666 /var/run/docker.sock
-    " 2>/dev/null || echo -e "${YELLOW}⚠️  Docker installation may need manual setup${NC}"
-}
+    # Update package list
+    apt-get update -qq
 
-# Test Docker
+    # Install essential tools
+    apt-get install -y -qq curl git unzip
+
+    # Install Docker CLI
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sh get-docker.sh || {
+        # Fallback for ARM64
+        curl -L https://download.docker.com/linux/static/stable/aarch64/docker-24.0.7.tgz | tar -xz
+        cp docker/docker /usr/local/bin/
+        chmod +x /usr/local/bin/docker
+        rm -rf docker
+    }
+
+    # Fix Docker socket permissions
+    chmod 666 /var/run/docker.sock
+    usermod -aG docker jenkins
+
+    # Clean up
+    rm -f get-docker.sh
+" 2>/dev/null || echo -e "${YELLOW}⚠️  Some setup steps may have failed${NC}"
+
+# Install Jenkins plugins
+echo -e "${YELLOW}🔌 Installing Jenkins plugins...${NC}"
+docker exec jenkins-server jenkins-plugin-cli --plugins \
+    git:latest \
+    workflow-aggregator:latest \
+    github:latest \
+    docker-workflow:latest \
+    pipeline-stage-view:latest 2>/dev/null || echo -e "${YELLOW}⚠️  Plugin installation may need retry${NC}"
+
+# Restart Jenkins to load plugins
+echo -e "${YELLOW}🔄 Restarting Jenkins...${NC}"
+docker restart jenkins-server
+sleep 25
+
+# Test Docker access
 echo -e "${YELLOW}🧪 Testing Docker access...${NC}"
 if docker exec jenkins-server docker --version >/dev/null 2>&1; then
-    echo -e "${GREEN}✅ Docker is working!${NC}"
+    echo -e "${GREEN}✅ Docker is working in Jenkins!${NC}"
 else
-    echo -e "${YELLOW}⚠️  Docker may need manual configuration${NC}"
+    echo -e "${YELLOW}⚠️  Docker setup may need manual configuration${NC}"
 fi
 
-# Get admin password
+# Get Jenkins password
 ADMIN_PASSWORD=$(docker exec jenkins-server cat /var/jenkins_home/secrets/initialAdminPassword 2>/dev/null || echo "admin")
 
 # Wait for Jenkins web interface
 echo -e "${YELLOW}⏳ Waiting for Jenkins web interface...${NC}"
-for i in {1..20}; do
+for i in {1..15}; do
     if curl -s ${JENKINS_URL} >/dev/null 2>&1; then
         break
     fi
     echo -n "."
-    sleep 3
+    sleep 2
 done
 echo ""
 
-# Final status
+# Final instructions
 echo ""
 echo -e "${GREEN}🎉 Jenkins is ready!${NC}"
 echo ""
-echo -e "${BLUE}📋 Access Information:${NC}"
+echo -e "${BLUE}📋 Access Jenkins:${NC}"
 echo -e "  🌐 URL: ${JENKINS_URL}"
 echo -e "  👤 Username: admin"
 echo -e "  🔑 Password: ${ADMIN_PASSWORD}"
 echo ""
-echo -e "${BLUE}📋 Next Steps:${NC}"
+echo -e "${BLUE}📋 Create Pipeline:${NC}"
 echo -e "  1. Open ${JENKINS_URL} in your browser"
-echo -e "  2. Login with the credentials above"
+echo -e "  2. Login with credentials above"
 echo -e "  3. Click 'New Item'"
-echo -e "  4. Create a Pipeline job named 'user-crud-api-pipeline'"
-echo -e "  5. Configure Pipeline:"
-echo -e "     - Definition: Pipeline script from SCM"
-echo -e "     - SCM: Git"
-echo -e "     - Repository URL: ${GITHUB_REPO}"
-echo -e "     - Branch: */main"
-echo -e "     - Script Path: Jenkinsfile.simple"
-echo -e "  6. Save and click 'Build Now'"
+echo -e "  4. Name: 'user-crud-pipeline'"
+echo -e "  5. Type: 'Pipeline'"
+echo -e "  6. Pipeline Definition: 'Pipeline script from SCM'"
+echo -e "  7. SCM: 'Git'"
+echo -e "  8. Repository URL: 'https://github.com/lucasalopes28/user-crud-api'"
+echo -e "  9. Branch: '*/main'"
+echo -e "  10. Script Path: 'Jenkinsfile.simple'"
+echo -e "  11. Save and Build!"
 echo ""
-echo -e "${BLUE}🔧 Management Commands:${NC}"
+echo -e "${BLUE}🔧 Management:${NC}"
 echo -e "  Stop:    docker-compose down"
 echo -e "  Start:   docker-compose up -d"
 echo -e "  Logs:    docker logs jenkins-server"
-echo -e "  Restart: docker restart jenkins-server"
 echo ""
-echo -e "${GREEN}🚀 Ready to build your Spring Boot application!${NC}"
+echo -e "${GREEN}🚀 Ready to build!${NC}"
