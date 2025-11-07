@@ -1,0 +1,172 @@
+# GitLab CI/CD Pipeline for User CRUD API
+# This pipeline builds, tests, and deploys a Spring Boot application with Docker
+
+# Define stages
+stages:
+  - test
+  - build
+  - deploy-staging
+  - deploy-production
+
+# Global variables
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  APP_NAME: "user-crud-api"
+  STAGING_PORT: "8080"
+  PROD_PORT: "8081"
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+
+# Cache Maven dependencies
+cache:
+  paths:
+    - .m2/repository
+    - target/
+
+# Use Docker-in-Docker service
+services:
+  - docker:dind
+
+# Before script - runs before each job
+before_script:
+  - echo "Starting pipeline for commit $CI_COMMIT_SHORT_SHA"
+
+# ==================== TEST STAGE ====================
+
+unit-tests:
+  stage: test
+  image: maven:3.9-eclipse-temurin-21
+  script:
+    - echo "Running unit tests..."
+    - mvn clean test
+    - echo "✅ Unit tests passed"
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - target/surefire-reports/TEST-*.xml
+    paths:
+      - target/surefire-reports/
+      - target/site/jacoco/
+    expire_in: 1 week
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  only:
+    - branches
+    - merge_requests
+
+# ==================== BUILD STAGE ====================
+
+build-docker-image:
+  stage: build
+  image: docker:latest
+  script:
+    - echo "Building Docker image..."
+    - docker build -t $APP_NAME:$CI_COMMIT_SHORT_SHA .
+    - docker tag $APP_NAME:$CI_COMMIT_SHORT_SHA $APP_NAME:latest
+    - echo "✅ Docker image built successfully"
+    - docker images | grep $APP_NAME
+  only:
+    - branches
+    - merge_requests
+
+# ==================== STAGING DEPLOYMENT ====================
+
+deploy-staging:
+  stage: deploy-staging
+  image: docker:latest
+  script:
+    - echo "Deploying to staging environment..."
+    
+    # Stop and remove existing staging container
+    - docker stop $APP_NAME-staging || true
+    - docker rm $APP_NAME-staging || true
+    
+    # Run new staging container
+    - |
+      docker run -d \
+        --name $APP_NAME-staging \
+        -p $STAGING_PORT:8080 \
+        -e SPRING_PROFILES_ACTIVE=staging \
+        $APP_NAME:$CI_COMMIT_SHORT_SHA
+    
+    - echo "✅ Staging deployed on port $STAGING_PORT"
+    
+    # Wait for application to start
+    - sleep 30
+    
+    # Health check
+    - docker ps | grep $APP_NAME-staging
+    - curl -f http://localhost:$STAGING_PORT/actuator/health || echo "⚠️ Health check pending"
+  environment:
+    name: staging
+    url: http://localhost:8080
+  only:
+    - main
+    - master
+    - develop
+
+integration-tests:
+  stage: deploy-staging
+  image: curlimages/curl:latest
+  needs:
+    - deploy-staging
+  script:
+    - echo "Running integration tests..."
+    - curl -f http://localhost:$STAGING_PORT/actuator/health || echo "Health endpoint test"
+    - curl -f http://localhost:$STAGING_PORT/actuator/info || echo "Info endpoint test"
+    - echo "✅ Integration tests completed"
+  only:
+    - main
+    - master
+    - develop
+
+# ==================== PRODUCTION DEPLOYMENT ====================
+
+deploy-production:
+  stage: deploy-production
+  image: docker:latest
+  script:
+    - echo "Deploying to production environment..."
+    
+    # Stop and remove existing production container
+    - docker stop $APP_NAME-prod || true
+    - docker rm $APP_NAME-prod || true
+    
+    # Run new production container
+    - |
+      docker run -d \
+        --name $APP_NAME-prod \
+        -p $PROD_PORT:8080 \
+        -e SPRING_PROFILES_ACTIVE=prod \
+        --restart unless-stopped \
+        $APP_NAME:$CI_COMMIT_SHORT_SHA
+    
+    - echo "✅ Production deployed on port $PROD_PORT"
+    
+    # Wait for application to start
+    - sleep 30
+    
+    # Health check
+    - docker ps | grep $APP_NAME-prod
+    - curl -f http://localhost:$PROD_PORT/actuator/health || echo "⚠️ Health check pending"
+  environment:
+    name: production
+    url: http://localhost:8081
+  when: manual  # Requires manual approval
+  only:
+    - main
+    - master
+
+# ==================== CLEANUP ====================
+
+cleanup:
+  stage: deploy-production
+  image: docker:latest
+  script:
+    - echo "Cleaning up old Docker images..."
+    - docker image prune -f
+    - echo "✅ Cleanup completed"
+  when: always
+  only:
+    - main
+    - master

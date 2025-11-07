@@ -4,6 +4,8 @@ Simple Jenkins setup for building and deploying Spring Boot applications from Gi
 
 ## 🚀 Quick Start
 
+### Option 1: Jenkins CI/CD
+
 Run one command to set up everything:
 
 ```bash
@@ -15,6 +17,20 @@ This will:
 - ✅ Install Git and Docker CLI
 - ✅ Install required Jenkins plugins
 - ✅ Provide access credentials
+
+### Option 2: GitLab CI/CD
+
+Push to GitLab and pipelines run automatically:
+
+```bash
+# Add GitLab remote
+git remote add gitlab https://gitlab.com/your-username/user-crud-api.git
+
+# Push to GitLab
+git push -u gitlab main
+```
+
+📖 **See `GITLAB_SETUP.md` for complete GitLab configuration**
 
 ## 📁 Project Structure
 
