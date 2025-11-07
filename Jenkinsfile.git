@@ -6,26 +6,24 @@ pipeline {
         IMAGE_TAG = "${APP_NAME}:${BUILD_NUMBER}"
         STAGING_PORT = '8080'
         PROD_PORT = '8081'
+        GITHUB_REPO = 'https://github.com/lucasalopes28/user-crud-api.git'
     }
     
     stages {
         stage('Checkout') {
             steps {
-                echo 'Checking out code from GitHub...'
+                echo 'Cloning repository from GitHub...'
                 script {
-                    // Clean workspace first
+                    // Clean workspace
                     deleteDir()
                     
-                    // Checkout from SCM
-                    checkout scm
-                    
-                    // Verify checkout
-                    sh '''
-                        echo "Workspace contents:"
+                    // Clone repository manually
+                    sh """
+                        git clone ${GITHUB_REPO} .
+                        git checkout main || git checkout master
+                        echo "Repository cloned successfully"
                         ls -la
-                        echo "Git status:"
-                        git status || echo "Not a git repository (this is OK)"
-                    '''
+                    """
                 }
             }
         }
@@ -93,9 +91,6 @@ pipeline {
         }
         
         stage('Deploy to Production') {
-            when {
-                branch 'main'
-            }
             steps {
                 script {
                     // Manual approval for production

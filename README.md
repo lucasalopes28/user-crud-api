@@ -21,7 +21,7 @@ This will:
 ```
 ├── run-jenkins.sh         # One-click Jenkins setup
 ├── docker-compose.yml     # Jenkins container config
-├── Jenkinsfile.simple     # CI/CD pipeline
+├── Jenkinsfile           # CI/CD pipeline
 ├── Dockerfile            # Application container
 ├── pom.xml              # Maven configuration
 └── src/                 # Spring Boot source code
@@ -37,7 +37,9 @@ chmod +x run-jenkins.sh
 
 ### 2. Create Pipeline
 
-After setup completes:
+After setup completes, choose one option:
+
+**Option A: Pipeline from SCM (Recommended)**
 
 1. Open **http://localhost:8090**
 2. Login with provided credentials
@@ -49,8 +51,19 @@ After setup completes:
    - SCM: **"Git"**
    - Repository URL: **"https://github.com/lucasalopes28/user-crud-api"**
    - Branch: **"*/main"**
-   - Script Path: **"Jenkinsfile.simple"**
+   - Script Path: **"Jenkinsfile"**
 7. **Save** and click **"Build Now"**
+
+**Option B: Pipeline with Manual Git Clone (If SCM has issues)**
+
+1. Create Pipeline job as above
+2. Configure:
+   - Definition: **"Pipeline script from SCM"**
+   - SCM: **"Git"**
+   - Repository URL: **"https://github.com/lucasalopes28/user-crud-api"**
+   - Branch: **"*/main"**
+   - Script Path: **"Jenkinsfile.git"**
+3. This version clones the repo manually and avoids SCM issues
 
 ## 🐳 Pipeline Stages
 
@@ -109,6 +122,20 @@ Wait a few minutes for plugins to load, then restart:
 ```bash
 docker restart jenkins-server
 ```
+
+### Git Error: "not in a git directory"
+This happens when Jenkins has issues with SCM checkout. Solutions:
+
+1. **Use Jenkinsfile.git instead** - It clones the repo manually
+2. **Or reinstall Git plugin:**
+   ```bash
+   docker exec jenkins-server jenkins-plugin-cli --plugins git:latest
+   docker restart jenkins-server
+   ```
+3. **Or verify Git is installed:**
+   ```bash
+   docker exec jenkins-server git --version
+   ```
 
 ### Docker Not Working
 ```bash
