@@ -41,7 +41,12 @@ docker exec -u root jenkins-server bash -c "
     apt-get update -qq
 
     # Install essential tools
-    apt-get install -y -qq curl git unzip
+    apt-get install -y -qq curl git unzip ca-certificates
+
+    # Configure git
+    git config --global user.email 'jenkins@localhost'
+    git config --global user.name 'Jenkins'
+    git config --global http.sslVerify false
 
     # Install Docker CLI
     curl -fsSL https://get.docker.com -o get-docker.sh
@@ -61,6 +66,10 @@ docker exec -u root jenkins-server bash -c "
     rm -f get-docker.sh
 " 2>/dev/null || echo -e "${YELLOW}⚠️  Some setup steps may have failed${NC}"
 
+# Verify Git installation
+echo -e "${YELLOW}🔍 Verifying Git installation...${NC}"
+docker exec jenkins-server git --version || echo -e "${RED}⚠️  Git not properly installed${NC}"
+
 # Install Jenkins plugins
 echo -e "${YELLOW}🔌 Installing Jenkins plugins...${NC}"
 docker exec jenkins-server jenkins-plugin-cli --plugins \
@@ -68,7 +77,8 @@ docker exec jenkins-server jenkins-plugin-cli --plugins \
     workflow-aggregator:latest \
     github:latest \
     docker-workflow:latest \
-    pipeline-stage-view:latest 2>/dev/null || echo -e "${YELLOW}⚠️  Plugin installation may need retry${NC}"
+    pipeline-stage-view:latest \
+    ws-cleanup:latest 2>/dev/null || echo -e "${YELLOW}⚠️  Plugin installation may need retry${NC}"
 
 # Restart Jenkins to load plugins
 echo -e "${YELLOW}🔄 Restarting Jenkins...${NC}"

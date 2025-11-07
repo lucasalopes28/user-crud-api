@@ -37,16 +37,16 @@ chmod +x run-jenkins.sh
 
 ### 2. Create Pipeline
 
-After setup completes, choose one option:
+After setup completes, choose your preferred option:
 
 **Option A: Pipeline from SCM (Recommended)**
 
 1. Open **http://localhost:8090**
 2. Login with provided credentials
 3. Click **"New Item"**
-4. Name: **"user-crud-pipeline"**
+4. Name: **"user-crud-api"**
 5. Type: **"Pipeline"**
-6. Configure:
+6. Configure Pipeline:
    - Definition: **"Pipeline script from SCM"**
    - SCM: **"Git"**
    - Repository URL: **"https://github.com/lucasalopes28/user-crud-api"**
@@ -54,28 +54,37 @@ After setup completes, choose one option:
    - Script Path: **"Jenkinsfile"**
 7. **Save** and click **"Build Now"**
 
-**Option B: Pipeline with Manual Git Clone (If SCM has issues)**
+📖 **Detailed SCM setup:** See `JENKINS_SCM_SETUP.md`
+
+**Option B: Standalone Pipeline (For Testing)**
 
 1. Create Pipeline job as above
-2. Configure:
-   - Definition: **"Pipeline script from SCM"**
-   - SCM: **"Git"**
-   - Repository URL: **"https://github.com/lucasalopes28/user-crud-api"**
-   - Branch: **"*/main"**
-   - Script Path: **"Jenkinsfile.git"**
-3. This version clones the repo manually and avoids SCM issues
+2. In Pipeline section:
+   - Definition: **"Pipeline script"**
+   - Copy content from **`Jenkinsfile.standalone`**
+   - Paste into Script box
+3. **Save** and **Build**
 
 ## 🐳 Pipeline Stages
 
 The pipeline will:
 
 1. **Checkout** - Clone code from GitHub
-2. **Build** - Create Docker image
-3. **Test** - Validate Docker image
-4. **Deploy to Staging** - Run on port 8080
-5. **Integration Tests** - Test endpoints
-6. **Deploy to Production** - Run on port 8081 (requires approval)
-7. **Cleanup** - Remove old images
+2. **Run Unit Tests** - Execute JUnit tests with Maven
+3. **Build** - Create Docker image
+4. **Test Image** - Validate Docker image
+5. **Deploy to Staging** - Run on port 8080
+6. **Integration Tests** - Test endpoints
+7. **Deploy to Production** - Run on port 8081 (requires approval)
+8. **Create Git Tag** - Auto-increment version (v0.0.1, v0.0.2, etc.)
+9. **Cleanup** - Remove old images
+
+### 🏷️ Automatic Versioning
+
+Each successful build automatically:
+- Creates a new Git tag with incremented version
+- Uses semantic versioning (v0.0.1 → v0.0.2 → v0.0.3)
+- Tags are created locally (see `GITHUB_CREDENTIALS.md` to push to GitHub)
 
 ## 🌐 Application Endpoints
 
@@ -84,6 +93,120 @@ After deployment:
 - **Staging:** http://localhost:8080
 - **Production:** http://localhost:8081
 - **Health Check:** http://localhost:8080/actuator/health
+
+### 📡 API Testing with curl
+
+#### Health & Info Endpoints
+
+```bash
+# Health check
+curl http://localhost:8080/actuator/health
+
+# Application info
+curl http://localhost:8080/actuator/info
+
+# H2 Console (in browser)
+open http://localhost:8080/h2-console
+```
+
+#### User CRUD Operations
+
+**Create a User (POST)**
+```bash
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Doe",
+    "email": "john.doe@example.com",
+    "phone": "+1234567890"
+  }'
+```
+
+**Get All Users (GET)**
+```bash
+curl http://localhost:8080/api/users
+```
+
+**Get User by ID (GET)**
+```bash
+# Replace {id} with actual user ID
+curl http://localhost:8080/api/users/1
+```
+
+**Update User (PUT)**
+```bash
+# Replace {id} with actual user ID
+curl -X PUT http://localhost:8080/api/users/1 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Updated",
+    "email": "john.updated@example.com",
+    "phone": "+1234567890"
+  }'
+```
+
+**Delete User (DELETE)**
+```bash
+# Replace {id} with actual user ID
+curl -X DELETE http://localhost:8080/api/users/1
+```
+
+#### Complete Test Workflow
+
+```bash
+# 1. Create a user
+USER_ID=$(curl -s -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Jane Smith",
+    "email": "jane.smith@example.com",
+    "phone": "+9876543210"
+  }' | jq -r '.id')
+
+echo "Created user with ID: $USER_ID"
+
+# 2. Get all users
+echo "All users:"
+curl -s http://localhost:8080/api/users | jq
+
+# 3. Get specific user
+echo "User details:"
+curl -s http://localhost:8080/api/users/$USER_ID | jq
+
+# 4. Update user
+echo "Updating user..."
+curl -s -X PUT http://localhost:8080/api/users/$USER_ID \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Jane Updated",
+    "email": "jane.updated@example.com",
+    "phone": "+9876543210"
+  }' | jq
+
+# 5. Verify update
+echo "Updated user:"
+curl -s http://localhost:8080/api/users/$USER_ID | jq
+
+# 6. Delete user
+echo "Deleting user..."
+curl -X DELETE http://localhost:8080/api/users/$USER_ID
+
+# 7. Verify deletion
+echo "Remaining users:"
+curl -s http://localhost:8080/api/users | jq
+```
+
+#### Testing Production Environment
+
+Replace `8080` with `8081` for production:
+
+```bash
+# Production health check
+curl http://localhost:8081/actuator/health
+
+# Production API
+curl http://localhost:8081/api/users
+```
 
 ## 🔧 Management Commands
 
@@ -123,19 +246,27 @@ Wait a few minutes for plugins to load, then restart:
 docker restart jenkins-server
 ```
 
-### Git Error: "not in a git directory"
-This happens when Jenkins has issues with SCM checkout. Solutions:
+### Git Errors ("not in a git directory" or "Error fetching remote repo")
 
-1. **Use Jenkinsfile.git instead** - It clones the repo manually
-2. **Or reinstall Git plugin:**
-   ```bash
-   docker exec jenkins-server jenkins-plugin-cli --plugins git:latest
-   docker restart jenkins-server
-   ```
-3. **Or verify Git is installed:**
-   ```bash
-   docker exec jenkins-server git --version
-   ```
+**Quick Fix: Use Standalone Pipeline**
+1. Copy content from `Jenkinsfile.standalone`
+2. Create Pipeline with "Pipeline script" (not SCM)
+3. Paste the script directly
+4. This bypasses all Git/SCM issues
+
+**Or Fix Git Plugin:**
+```bash
+# Reinstall Git and configure
+docker exec -u root jenkins-server bash -c "
+    apt-get update && apt-get install -y git
+    git config --global user.email 'jenkins@localhost'
+    git config --global user.name 'Jenkins'
+"
+
+# Reinstall Git plugin
+docker exec jenkins-server jenkins-plugin-cli --plugins git:latest
+docker restart jenkins-server
+```
 
 ### Docker Not Working
 ```bash
