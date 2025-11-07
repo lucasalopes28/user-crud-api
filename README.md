@@ -1,92 +1,147 @@
-# User CRUD API
+# User CRUD API - Jenkins CI/CD Setup
 
-A simple REST API for managing users built with Java 21 and Spring Boot.
+Simple Jenkins setup for building and deploying Spring Boot applications from GitHub.
 
-## Features
+## 🚀 Quick Setup
 
-- Create, Read, Update, Delete (CRUD) operations for users
-- User validation with email uniqueness
-- In-memory H2 database
-- Comprehensive unit tests
-- RESTful API endpoints
-
-## User Model
-
-Each user has the following attributes:
-- `id` (Long) - Auto-generated primary key
-- `name` (String) - Required, 2-50 characters
-- `email` (String) - Required, valid email format, unique
-- `phone` (String) - Optional, max 15 characters
-- `createdAt` (LocalDateTime) - Auto-generated
-- `updatedAt` (LocalDateTime) - Auto-updated
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/users` | Get all users |
-| GET | `/api/users/{id}` | Get user by ID |
-| POST | `/api/users` | Create new user |
-| PUT | `/api/users/{id}` | Update user |
-| DELETE | `/api/users/{id}` | Delete user |
-
-## Running the Application
+Run this single command to set up Jenkins:
 
 ```bash
-# Build and run
-mvn spring-boot:run
-
-# Or build jar and run
-mvn clean package
-java -jar target/user-crud-api-1.0.0.jar
+./run-jenkins.sh
 ```
 
-The application will start on `http://localhost:8080`
+This script will:
+- ✅ Start Jenkins with Docker support
+- ✅ Install Docker CLI in Jenkins container
+- ✅ Configure permissions and access
+- ✅ Provide Jenkins credentials
+- ✅ Give you step-by-step instructions
 
-## Running Tests
+## 📋 What You Get
 
-```bash
-# Run all tests
-mvn test
+- **Jenkins Server** running on http://localhost:8090
+- **Automated Pipeline** that builds and deploys your Spring Boot app
+- **Docker Integration** for containerized deployments
+- **GitHub Integration** for automatic builds on code changes
 
-# Run with coverage
-mvn test jacoco:report
+## 🔧 Pipeline Features
+
+The Jenkins pipeline will:
+
+1. **Checkout** code from https://github.com/lucasalopes28/user-crud-api
+2. **Build** the Spring Boot application with Docker
+3. **Test** the application
+4. **Deploy to Staging** on port 8080
+5. **Run Integration Tests**
+6. **Deploy to Production** on port 8081 (with approval)
+
+## 📁 Project Structure
+
+```
+├── run-jenkins.sh           # One-click Jenkins setup
+├── docker-compose.yml       # Jenkins container configuration  
+├── Jenkinsfile.simple       # Docker-based CI/CD pipeline
+├── Dockerfile              # Application container
+└── README.md              # This file
 ```
 
-## H2 Database Console
+## 🎯 Usage
 
-Access the H2 console at: `http://localhost:8080/h2-console`
-- JDBC URL: `jdbc:h2:mem:testdb`
-- Username: `sa`
-- Password: (empty)
-
-## Example Usage
-
-### Create User
+### Initial Setup
 ```bash
-curl -X POST http://localhost:8080/api/users \
-  -H "Content-Type: application/json" \
-  -d '{"name":"John Doe","email":"john@example.com","phone":"1234567890"}'
+# Run the setup script
+./run-jenkins.sh
 ```
 
-### Get All Users
+### Access Jenkins
+- **URL:** http://localhost:8090
+- **Username:** admin
+- **Password:** (provided by setup script)
+
+### Manage Jenkins
 ```bash
-curl http://localhost:8080/api/users
+# Start Jenkins
+docker-compose up -d
+
+# Stop Jenkins
+docker-compose down
+
+# View logs
+docker logs jenkins-server
+
+# Restart Jenkins
+docker restart jenkins-server
 ```
 
-### Get User by ID
+### Manual Job Creation (if needed)
+
+If the automatic job creation fails:
+
+1. Open http://localhost:8090
+2. Click "New Item"
+3. Enter name: `user-crud-api-pipeline`
+4. Select "Pipeline"
+5. In Pipeline section:
+   - Definition: "Pipeline script from SCM"
+   - SCM: Git
+   - Repository URL: `https://github.com/lucasalopes28/user-crud-api`
+   - Branch: `*/main`
+   - Script Path: `Jenkinsfile.simple`
+6. Save and Build
+
+## 🐳 Application Endpoints
+
+After successful deployment:
+
+- **Staging:** http://localhost:8080
+- **Production:** http://localhost:8081
+- **Health Check:** http://localhost:8080/actuator/health
+
+## 🔍 Troubleshooting
+
+### Jenkins Won't Start
 ```bash
-curl http://localhost:8080/api/users/1
+docker-compose down
+docker-compose up -d
+docker logs jenkins-server
 ```
 
-### Update User
+### Docker Not Working in Jenkins
 ```bash
-curl -X PUT http://localhost:8080/api/users/1 \
-  -H "Content-Type: application/json" \
-  -d '{"name":"John Updated","email":"john.updated@example.com","phone":"9999999999"}'
+# Fix Docker permissions
+docker exec -u root jenkins-server chmod 666 /var/run/docker.sock
 ```
 
-### Delete User
-```bash
-curl -X DELETE http://localhost:8080/api/users/1
-```# user-crud-api
+### Pipeline Fails
+1. Check Jenkins logs: `docker logs jenkins-server`
+2. Verify GitHub repository is accessible
+3. Check Dockerfile exists in repository
+4. Ensure all required files are present
+
+## 📚 Additional Information
+
+- **Spring Boot Version:** 3.2.0
+- **Java Version:** 21
+- **Database:** H2 (in-memory)
+- **Build Tool:** Maven
+- **Container Runtime:** Docker
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Push to GitHub
+5. Jenkins will automatically build and test your changes
+
+## 📞 Support
+
+If you encounter issues:
+1. Check the Jenkins logs
+2. Verify Docker is running
+3. Ensure ports 8080, 8081, and 8090 are available
+4. Check GitHub repository accessibility
+
+---
+
+**Ready to go!** Run `./run-jenkins.sh` and start building! 🚀
