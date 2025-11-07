@@ -34,13 +34,22 @@ pipeline {
             }
             post {
                 always {
-                    // Publish test results
-                    publishTestResults testResultsPattern: 'target/surefire-reports/*.xml'
+                    // Publish test results using standard Jenkins method
+                    junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
                     
-                    // Publish JaCoCo coverage report
-                    publishCoverage adapters: [
-                        jacocoAdapter('target/site/jacoco/jacoco.xml')
-                    ], sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
+                    // Archive JaCoCo coverage report (if jacoco plugin is available)
+                    script {
+                        if (fileExists('target/site/jacoco/index.html')) {
+                            publishHTML([
+                                allowMissing: false,
+                                alwaysLinkToLastBuild: true,
+                                keepAll: true,
+                                reportDir: 'target/site/jacoco',
+                                reportFiles: 'index.html',
+                                reportName: 'JaCoCo Coverage Report'
+                            ])
+                        }
+                    }
                 }
             }
         }
@@ -59,19 +68,17 @@ pipeline {
         }
         
         stage('Code Quality Analysis') {
-            parallel {
-                stage('Static Analysis') {
-                    steps {
-                        echo 'Running static code analysis...'
-                        // Add SonarQube or other static analysis tools here if needed
-                        sh 'mvn verify -DskipTests'
-                    }
-                }
-                stage('Security Scan') {
-                    steps {
-                        echo 'Running security scan...'
-                        // Add OWASP dependency check or other security tools here
-                        sh 'mvn org.owasp:dependency-check-maven:check || true'
+            steps {
+                echo 'Running code quality checks...'
+                // Basic verification without additional plugins
+                sh 'mvn verify -DskipTests'
+                
+                // Optional: Run OWASP dependency check if plugin is available
+                script {
+                    try {
+                        sh 'mvn org.owasp:dependency-check-maven:check'
+                    } catch (Exception e) {
+                        echo "OWASP dependency check not available or failed: ${e.getMessage()}"
                     }
                 }
             }
