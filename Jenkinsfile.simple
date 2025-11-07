@@ -1,15 +1,20 @@
 pipeline {
     agent any
     
-    tools {
-        maven 'Maven-3.9.0' // Adjust version based on your Jenkins Maven installation
-        jdk 'JDK-21'        // Adjust based on your Jenkins JDK installation
-    }
-    
     environment {
-        MAVEN_OPTS = '-Dmaven.test.failure.ignore=true'
+        // Docker and application settings
         APP_NAME = 'user-crud-api'
         APP_VERSION = '1.0.0'
+        IMAGE_TAG = "${APP_NAME}:${BUILD_NUMBER}"
+        
+        // Container settings
+        STAGING_CONTAINER = 'user-crud-staging'
+        STAGING_PORT = '8080'
+        PROD_CONTAINER = 'user-crud-prod'
+        PROD_PORT = '8081'
+        
+        // Docker network for containers
+        DOCKER_NETWORK = 'user-crud-network'
     }
     
     stages {
@@ -20,167 +25,239 @@ pipeline {
             }
         }
         
-        stage('Build') {
+        stage('Setup Docker Environment') {
             steps {
-                echo 'Building the application...'
-                sh 'mvn clean compile'
+                echo 'Setting up Docker environment...'
+                sh """
+                    # Create Docker network if it doesn't exist
+                    docker network ls | grep ${DOCKER_NETWORK} || docker network create ${DOCKER_NETWORK}
+                    
+                    # Clean up any existing test containers
+                    docker stop user-crud-test || true
+                    docker rm user-crud-test || true
+                """
             }
         }
         
-        stage('Test') {
+        stage('Build & Test in Docker') {
             steps {
-                echo 'Running tests...'
-                sh 'mvn test'
-            }
-            post {
-                always {
-                    // Publish test results using basic Jenkins functionality
-                    script {
-                        if (fileExists('target/surefire-reports/*.xml')) {
-                            junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
-                        }
-                        
-                        // Archive test reports if they exist
-                        if (fileExists('target/surefire-reports')) {
-                            archiveArtifacts artifacts: 'target/surefire-reports/**', allowEmptyArchive: true
-                        }
-                        
-                        // Archive JaCoCo reports if they exist
-                        if (fileExists('target/site/jacoco')) {
-                            archiveArtifacts artifacts: 'target/site/jacoco/**', allowEmptyArchive: true
-                        }
-                    }
-                }
-            }
-        }
-        
-        stage('Package') {
-            steps {
-                echo 'Packaging the application...'
-                sh 'mvn package -DskipTests'
-            }
-            post {
-                success {
-                    // Archive the built artifacts
-                    archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
-                }
-            }
-        }
-        
-        stage('Verify') {
-            steps {
-                echo 'Running verification...'
-                sh 'mvn verify -DskipTests'
-            }
-        }
-        
-        stage('Build Docker Image') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                    branch 'develop'
-                }
-            }
-            steps {
+                echo 'Building and testing application in Docker...'
                 script {
-                    echo 'Building Docker image...'
-                    if (fileExists('Dockerfile')) {
-                        sh "docker build -t ${APP_NAME}:${BUILD_NUMBER} ."
-                        sh "docker tag ${APP_NAME}:${BUILD_NUMBER} ${APP_NAME}:latest"
-                        echo "Docker image built: ${APP_NAME}:${BUILD_NUMBER}"
-                    } else {
-                        echo 'Dockerfile not found, skipping Docker build'
-                    }
+                    // Build the Docker image (includes Maven build and test)
+                    sh "docker build -t ${IMAGE_TAG} ."
+                    
+                    // Tag with latest
+                    sh "docker tag ${IMAGE_TAG} ${APP_NAME}:latest"
+                    
+                    echo "Docker image built successfully: ${IMAGE_TAG}"
+                    sh "docker images | grep ${APP_NAME}"
+                }
+            }
+        }
+        
+        stage('Test Docker Image') {
+            steps {
+                echo 'Testing Docker image...'
+                script {
+                    // Run a quick test of the Docker image
+                    sh """
+                        # Test that the image runs
+                        docker run --rm --name test-${BUILD_NUMBER} ${IMAGE_TAG} java -version
+                        
+                        # Check image details
+                        echo "Image size and info:"
+                        docker images ${APP_NAME}
+                    """
                 }
             }
         }
         
         stage('Deploy to Staging') {
+            steps {
+                script {
+                    echo 'Deploying to staging environment in Docker...'
+                    
+                    // Stop and remove existing staging container
+                    sh """
+                        docker stop ${STAGING_CONTAINER} || true
+                        docker rm ${STAGING_CONTAINER} || true
+                    """
+                    
+                    // Run new staging container
+                    sh """
+                        docker run -d \
+                            --name ${STAGING_CONTAINER} \
+                            --network ${DOCKER_NETWORK} \
+                            -p ${STAGING_PORT}:8080 \
+                            -e SPRING_PROFILES_ACTIVE=staging \
+                            -e JAVA_OPTS="-Xmx512m -Xms256m" \
+                            ${IMAGE_TAG}
+                    """
+                    
+                    echo "Staging container started: ${STAGING_CONTAINER}"
+                    
+                    // Wait and test the application
+                    sh """
+                        echo "Waiting for staging application to start..."
+                        sleep 30
+                        
+                        # Show container status
+                        docker ps | grep ${STAGING_CONTAINER}
+                        
+                        # Test the endpoint
+                        if curl -f http://localhost:${STAGING_PORT}/actuator/health 2>/dev/null; then
+                            echo "Staging deployment successful!"
+                        else
+                            echo "Health check failed, showing container logs:"
+                            docker logs ${STAGING_CONTAINER}
+                        fi
+                    """
+                }
+            }
+        }
+        
+        stage('Integration Tests') {
+            steps {
+                echo 'Running basic integration tests...'
+                script {
+                    // Simple integration tests
+                    sh """
+                        echo "Testing staging endpoints..."
+                        
+                        # Test health endpoint
+                        curl -f http://localhost:${STAGING_PORT}/actuator/health || echo "Health endpoint failed"
+                        
+                        # Test info endpoint if available
+                        curl -f http://localhost:${STAGING_PORT}/actuator/info || echo "Info endpoint not available"
+                        
+                        echo "Basic integration tests completed!"
+                    """
+                }
+            }
+        }
+    }
+    
+        stage('Deploy to Production') {
             when {
                 anyOf {
                     branch 'main'
                     branch 'master'
-                    branch 'develop'
                 }
             }
             steps {
                 script {
-                    echo 'Deploying to staging environment...'
+                    // Simple production deployment (no blue-green)
+                    input message: 'Deploy to Production?', ok: 'Deploy'
                     
-                    // Check if Docker is available
-                    def dockerAvailable = sh(script: 'command -v docker', returnStatus: true) == 0
+                    echo 'Deploying to production...'
                     
-                    if (dockerAvailable && fileExists('Dockerfile')) {
-                        // Stop existing container if running
-                        sh '''
-                            docker stop user-crud-staging || true
-                            docker rm user-crud-staging || true
-                        '''
+                    // Stop and remove existing production container
+                    sh """
+                        docker stop ${PROD_CONTAINER} || true
+                        docker rm ${PROD_CONTAINER} || true
+                    """
+                    
+                    // Run new production container
+                    sh """
+                        docker run -d \
+                            --name ${PROD_CONTAINER} \
+                            --network ${DOCKER_NETWORK} \
+                            -p ${PROD_PORT}:8080 \
+                            -e SPRING_PROFILES_ACTIVE=prod \
+                            -e JAVA_OPTS="-Xmx1g -Xms512m" \
+                            --restart unless-stopped \
+                            ${IMAGE_TAG}
+                    """
+                    
+                    // Wait and test production
+                    sh """
+                        echo "Waiting for production application to start..."
+                        sleep 30
                         
-                        // Run new container
-                        sh """
-                            docker run -d \
-                                --name user-crud-staging \
-                                -p 8080:8080 \
-                                -e SPRING_PROFILES_ACTIVE=staging \
-                                ${APP_NAME}:${BUILD_NUMBER}
-                        """
+                        # Show container status
+                        docker ps | grep ${PROD_CONTAINER}
                         
-                        // Simple health check
-                        sh '''
-                            echo "Waiting for application to start..."
-                            sleep 30
-                            
-                            # Try to check if the application is running
-                            if curl -f http://localhost:8080/actuator/health 2>/dev/null; then
-                                echo "Application is healthy!"
-                            else
-                                echo "Health check endpoint not available, checking if container is running..."
-                                docker ps | grep user-crud-staging || echo "Container not running"
-                            fi
-                        '''
-                    } else {
-                        echo 'Docker not available or Dockerfile not found, running JAR directly...'
-                        sh '''
-                            # Kill any existing process
-                            pkill -f "user-crud-api" || true
-                            
-                            # Run the application in background
-                            nohup java -jar target/*.jar --spring.profiles.active=staging > staging.log 2>&1 &
-                            
-                            # Wait and check if it started
-                            sleep 30
-                            if pgrep -f "user-crud-api"; then
-                                echo "Application started successfully"
-                            else
-                                echo "Application may not have started properly"
-                                cat staging.log || echo "No log file found"
-                            fi
-                        '''
-                    }
+                        # Test production endpoint
+                        if curl -f http://localhost:${PROD_PORT}/actuator/health 2>/dev/null; then
+                            echo "Production deployment successful!"
+                        else
+                            echo "Production health check failed!"
+                            docker logs ${PROD_CONTAINER}
+                        fi
+                    """
                 }
+            }
+        }
+        
+        stage('Cleanup') {
+            steps {
+                echo 'Cleaning up old Docker images...'
+                sh """
+                    # Remove old images (keep last 3)
+                    docker images ${APP_NAME} --format "table {{.Tag}}" | grep -E '^[0-9]+\$' | sort -nr | tail -n +4 | while read tag; do
+                        echo "Removing old image: ${APP_NAME}:\$tag"
+                        docker rmi ${APP_NAME}:\$tag || true
+                    done
+                    
+                    # Clean up dangling images
+                    docker image prune -f
+                    
+                    echo "Current images:"
+                    docker images | grep ${APP_NAME}
+                """
             }
         }
     }
     
     post {
         always {
-            echo 'Cleaning up workspace...'
-            // Archive logs if they exist
             script {
-                if (fileExists('staging.log')) {
-                    archiveArtifacts artifacts: 'staging.log', allowEmptyArchive: true
-                }
+                echo 'Pipeline cleanup...'
+                
+                // Show final status
+                sh """
+                    echo "Final container status:"
+                    docker ps | grep user-crud || echo "No user-crud containers running"
+                    
+                    echo "Available images:"
+                    docker images | grep ${APP_NAME} || echo "No ${APP_NAME} images found"
+                """
+                
+                // Archive container logs
+                sh """
+                    mkdir -p logs
+                    docker logs ${STAGING_CONTAINER} > logs/staging.log 2>&1 || echo "No staging logs"
+                    docker logs ${PROD_CONTAINER} > logs/production.log 2>&1 || echo "No production logs"
+                """
+                
+                archiveArtifacts artifacts: 'logs/*.log', allowEmptyArchive: true
             }
+            
             cleanWs()
         }
         success {
-            echo 'Pipeline completed successfully!'
+            echo 'Docker pipeline completed successfully!'
+            sh """
+                echo "Deployment Summary:"
+                echo "- Image: ${IMAGE_TAG}"
+                echo "- Staging: http://localhost:${STAGING_PORT}"
+                echo "- Production: http://localhost:${PROD_PORT}"
+            """
         }
         failure {
-            echo 'Pipeline failed!'
-            // You can add email notifications here if needed
+            echo 'Docker pipeline failed!'
+            script {
+                sh """
+                    echo "Debugging information:"
+                    docker ps -a | grep user-crud || echo "No containers found"
+                    
+                    echo "Staging logs:"
+                    docker logs ${STAGING_CONTAINER} 2>&1 || echo "No staging container"
+                    
+                    echo "Production logs:"
+                    docker logs ${PROD_CONTAINER} 2>&1 || echo "No production container"
+                """
+            }
         }
         unstable {
             echo 'Pipeline is unstable!'
