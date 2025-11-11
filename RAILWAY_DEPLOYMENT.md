@@ -9,17 +9,23 @@ Quick guide to deploy your app to Railway via GitHub Actions.
 3. Name it: `GitHub Actions`
 4. Copy the token
 
-## Step 2: Get Railway Service Name
+## Step 2: Get Railway Project ID
 
-1. Go to your Railway project dashboard
+1. Go to your Railway project
+2. Look at the URL: `https://railway.app/project/YOUR_PROJECT_ID`
+3. Copy the Project ID (the UUID after `/project/`)
+
+## Step 3: Get Railway Service Name
+
+1. In your Railway project dashboard
 2. Look at your service name (top of the page)
 3. Copy it (e.g., `user-crud-api`)
 
-## Step 3: Add Secrets to GitHub
+## Step 4: Add Secrets to GitHub
 
 Go to: `https://github.com/lucasalopes28/user-crud-api/settings/secrets/actions`
 
-Add these two secrets:
+Add these three secrets:
 
 ### RAILWAY_TOKEN
 - Click "New repository secret"
@@ -27,10 +33,16 @@ Add these two secrets:
 - Value: Paste the token from Step 1
 - Click "Add secret"
 
+### RAILWAY_PROJECT_ID
+- Click "New repository secret"
+- Name: `RAILWAY_PROJECT_ID`
+- Value: Your project ID from Step 2
+- Click "Add secret"
+
 ### RAILWAY_SERVICE
 - Click "New repository secret"
 - Name: `RAILWAY_SERVICE`
-- Value: Your service name from Step 2
+- Value: Your service name from Step 3
 - Click "Add secret"
 
 ## Step 4: Deploy

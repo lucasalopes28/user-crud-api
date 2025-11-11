@@ -207,11 +207,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Use Railway Deployment Action
-        uses: railwayapp/railway-deploy@v1
-        with:
-          railway_token: ${{ secrets.RAILWAY_TOKEN }}
-          service: ${{ secrets.RAILWAY_SERVICE }}
+      - name: Install Railway CLI
+        run: |
+          npm install -g @railway/cli
+      
+      - name: Deploy to Railway
+        run: |
+          export RAILWAY_TOKEN="${{ secrets.RAILWAY_TOKEN }}"
+          railway link ${{ secrets.RAILWAY_PROJECT_ID }}
+          railway up --service ${{ secrets.RAILWAY_SERVICE }}
       
       - name: Deployment complete
         run: |
