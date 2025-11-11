@@ -87,12 +87,50 @@ push-to-registry:
     - master
     - develop
 
-# ==================== STAGING DEPLOYMENT ====================
+# ==================== CONTAINER TEST ====================
+
+test-container:
+  stage: deploy-staging
+  image: docker:latest
+  needs:
+    - build-docker-image
+  script:
+    - echo "Testing Docker container..."
+    - echo "⚠️ Note - This test runs the container briefly to verify it works"
+    
+    # Run container in test mode
+    - docker run -d --name $APP_NAME-test -p 8080:8080 -e SPRING_PROFILES_ACTIVE=test $APP_NAME:$CI_COMMIT_SHORT_SHA
+    
+    # Wait for startup
+    - sleep 30
+    
+    # Check if container is running
+    - docker ps | grep $APP_NAME-test
+    
+    # Show logs
+    - echo "Container logs:"
+    - docker logs $APP_NAME-test
+    
+    # Cleanup
+    - docker stop $APP_NAME-test
+    - docker rm $APP_NAME-test
+    
+    - echo "✅ Container test completed"
+  only:
+    - branches
+    - merge_requests
+
+# ==================== DEPLOYMENT (Self-Hosted Runner Only) ====================
+# Note: These stages require a self-hosted GitLab Runner with Docker access
+# They will not work with GitLab's shared runners
 
 deploy-staging:
   stage: deploy-staging
   image: docker:latest
+  needs:
+    - build-docker-image
   script:
+    - echo "⚠️ This stage requires a self-hosted GitLab Runner"
     - echo "Deploying to staging environment..."
     
     # Stop and remove existing staging container
@@ -100,50 +138,29 @@ deploy-staging:
     - docker rm $APP_NAME-staging || true
     
     # Run new staging container
-    - |
-      docker run -d \
-        --name $APP_NAME-staging \
-        -p $STAGING_PORT:8080 \
-        -e SPRING_PROFILES_ACTIVE=staging \
-        $APP_NAME:$CI_COMMIT_SHORT_SHA
+    - docker run -d --name $APP_NAME-staging -p $STAGING_PORT:8080 -e SPRING_PROFILES_ACTIVE=staging $APP_NAME:$CI_COMMIT_SHORT_SHA
     
     - echo "✅ Staging deployed on port $STAGING_PORT"
-    
-    # Wait for application to start
     - sleep 30
-    
-    # Health check
     - docker ps | grep $APP_NAME-staging
-    - curl -f http://localhost:$STAGING_PORT/actuator/health || echo "⚠️ Health check pending"
   environment:
     name: staging
     url: http://localhost:8080
+  tags:
+    - self-hosted
+  when: manual
   only:
     - main
     - master
     - develop
-
-integration-tests:
-  stage: deploy-staging
-  image: curlimages/curl:latest
-  needs:
-    - deploy-staging
-  script:
-    - echo "Running integration tests..."
-    - curl -f http://localhost:$STAGING_PORT/actuator/health || echo "Health endpoint test"
-    - curl -f http://localhost:$STAGING_PORT/actuator/info || echo "Info endpoint test"
-    - echo "✅ Integration tests completed"
-  only:
-    - main
-    - master
-    - develop
-
-# ==================== PRODUCTION DEPLOYMENT ====================
 
 deploy-production:
   stage: deploy-production
   image: docker:latest
+  needs:
+    - build-docker-image
   script:
+    - echo "⚠️ This stage requires a self-hosted GitLab Runner"
     - echo "Deploying to production environment..."
     
     # Stop and remove existing production container
@@ -151,26 +168,17 @@ deploy-production:
     - docker rm $APP_NAME-prod || true
     
     # Run new production container
-    - |
-      docker run -d \
-        --name $APP_NAME-prod \
-        -p $PROD_PORT:8080 \
-        -e SPRING_PROFILES_ACTIVE=prod \
-        --restart unless-stopped \
-        $APP_NAME:$CI_COMMIT_SHORT_SHA
+    - docker run -d --name $APP_NAME-prod -p $PROD_PORT:8080 -e SPRING_PROFILES_ACTIVE=prod --restart unless-stopped $APP_NAME:$CI_COMMIT_SHORT_SHA
     
     - echo "✅ Production deployed on port $PROD_PORT"
-    
-    # Wait for application to start
     - sleep 30
-    
-    # Health check
     - docker ps | grep $APP_NAME-prod
-    - curl -f http://localhost:$PROD_PORT/actuator/health || echo "⚠️ Health check pending"
   environment:
     name: production
     url: http://localhost:8081
-  when: manual  # Requires manual approval
+  tags:
+    - self-hosted
+  when: manual
   only:
     - main
     - master
