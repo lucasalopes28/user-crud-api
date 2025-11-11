@@ -99,6 +99,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      image-tag: ${{ steps.set-tag.outputs.tag }}
     
     steps:
       - name: Checkout code
@@ -113,6 +115,15 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set image tag
+        id: set-tag
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ] || [ "${{ github.ref }}" == "refs/heads/master" ]; then
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
       
       - name: Extract metadata
         id: meta
@@ -157,14 +168,15 @@ jobs:
       
       - name: Pull and test container
         run: |
-          echo "Pulling image..."
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          IMAGE_TAG="${{ needs.docker.outputs.image-tag }}"
+          echo "Pulling image with tag: $IMAGE_TAG"
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$IMAGE_TAG
           
           echo "Starting container..."
           docker run -d --name test-container \
             -p 8080:8080 \
             -e SPRING_PROFILES_ACTIVE=test \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$IMAGE_TAG
           
           echo "Waiting for application to start..."
           sleep 30
