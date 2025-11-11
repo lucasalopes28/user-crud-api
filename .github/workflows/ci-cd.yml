@@ -196,11 +196,35 @@ jobs:
           
           echo "✅ Container test completed"
 
+  # ==================== DEPLOY TO RAILWAY ====================
+  deploy-railway:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    needs: [test-container]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+      
+      - name: Deploy to Railway
+        run: railway up --service ${{ env.APP_NAME }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      
+      - name: Deployment complete
+        run: |
+          echo "✅ Deployed to Railway!"
+          echo "Check your Railway dashboard for the public URL"
+
   # ==================== CREATE RELEASE ====================
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [test, build, docker]
+    needs: [test, build, docker, deploy-railway]
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     permissions:
       contents: write
