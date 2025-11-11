@@ -212,10 +212,11 @@ jobs:
           npm install -g @railway/cli
       
       - name: Deploy to Railway
-        run: |
-          export RAILWAY_TOKEN="${{ secrets.RAILWAY_TOKEN }}"
-          railway link ${{ secrets.RAILWAY_PROJECT_ID }}
-          railway up --service ${{ secrets.RAILWAY_SERVICE }}
+        run: railway up
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+          RAILWAY_SERVICE_NAME: ${{ secrets.RAILWAY_SERVICE }}
       
       - name: Deployment complete
         run: |
