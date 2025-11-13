@@ -1,6 +1,8 @@
-# User CRUD API - Jenkins CI/CD
+# User CRUD API - Complete CI/CD Pipeline
 
-Simple Jenkins setup for building and deploying Spring Boot applications from GitHub.
+Simple CI/CD setup for building and deploying Spring Boot applications with Jenkins, GitLab CI/CD, and GitHub Actions.
+
+**Last Updated:** Testing GitHub webhook integration ✅
 
 ## 🚀 Quick Start
 
