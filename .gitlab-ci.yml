@@ -93,13 +93,18 @@ test-container:
   stage: deploy-staging
   image: docker:latest
   needs:
-    - build-docker-image
+    - push-to-registry
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
-    - echo "Testing Docker container..."
-    - echo "⚠️ Note - This test runs the container briefly to verify it works"
+    - echo "Testing Docker container from registry..."
+    - echo "Pulling image from $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+    
+    # Pull image from registry
+    - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
     
     # Run container in test mode
-    - docker run -d --name $APP_NAME-test -p 8080:8080 -e SPRING_PROFILES_ACTIVE=test $APP_NAME:$CI_COMMIT_SHORT_SHA
+    - docker run -d --name $APP_NAME-test -p 8080:8080 -e SPRING_PROFILES_ACTIVE=test $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
     
     # Wait for startup
     - sleep 30
@@ -111,14 +116,19 @@ test-container:
     - echo "Container logs:"
     - docker logs $APP_NAME-test
     
+    # Test health endpoint (if available)
+    - apk add --no-cache curl || true
+    - curl -f http://localhost:8080/actuator/health || echo "Health endpoint not available"
+    
     # Cleanup
     - docker stop $APP_NAME-test
     - docker rm $APP_NAME-test
     
     - echo "✅ Container test completed"
   only:
-    - branches
-    - merge_requests
+    - main
+    - master
+    - develop
 
 # ==================== DEPLOYMENT (Self-Hosted Runner Only) ====================
 # Note: These stages require a self-hosted GitLab Runner with Docker access
@@ -128,17 +138,22 @@ deploy-staging:
   stage: deploy-staging
   image: docker:latest
   needs:
-    - build-docker-image
+    - push-to-registry
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
     - echo "⚠️ This stage requires a self-hosted GitLab Runner"
     - echo "Deploying to staging environment..."
+    
+    # Pull latest image from registry
+    - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
     
     # Stop and remove existing staging container
     - docker stop $APP_NAME-staging || true
     - docker rm $APP_NAME-staging || true
     
     # Run new staging container
-    - docker run -d --name $APP_NAME-staging -p $STAGING_PORT:8080 -e SPRING_PROFILES_ACTIVE=staging $APP_NAME:$CI_COMMIT_SHORT_SHA
+    - docker run -d --name $APP_NAME-staging -p $STAGING_PORT:8080 -e SPRING_PROFILES_ACTIVE=staging $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
     
     - echo "✅ Staging deployed on port $STAGING_PORT"
     - sleep 30
@@ -158,17 +173,22 @@ deploy-production:
   stage: deploy-production
   image: docker:latest
   needs:
-    - build-docker-image
+    - push-to-registry
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
     - echo "⚠️ This stage requires a self-hosted GitLab Runner"
     - echo "Deploying to production environment..."
+    
+    # Pull latest image from registry
+    - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
     
     # Stop and remove existing production container
     - docker stop $APP_NAME-prod || true
     - docker rm $APP_NAME-prod || true
     
     # Run new production container
-    - docker run -d --name $APP_NAME-prod -p $PROD_PORT:8080 -e SPRING_PROFILES_ACTIVE=prod --restart unless-stopped $APP_NAME:$CI_COMMIT_SHORT_SHA
+    - docker run -d --name $APP_NAME-prod -p $PROD_PORT:8080 -e SPRING_PROFILES_ACTIVE=prod --restart unless-stopped $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
     
     - echo "✅ Production deployed on port $PROD_PORT"
     - sleep 30
