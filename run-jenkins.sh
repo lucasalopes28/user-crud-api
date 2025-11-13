@@ -70,20 +70,9 @@ docker exec -u root jenkins-server bash -c "
 echo -e "${YELLOW}🔍 Verifying Git installation...${NC}"
 docker exec jenkins-server git --version || echo -e "${RED}⚠️  Git not properly installed${NC}"
 
-# Install Jenkins plugins
-echo -e "${YELLOW}🔌 Installing Jenkins plugins...${NC}"
-docker exec jenkins-server jenkins-plugin-cli --plugins \
-    git:latest \
-    workflow-aggregator:latest \
-    github:latest \
-    docker-workflow:latest \
-    pipeline-stage-view:latest \
-    ws-cleanup:latest 2>/dev/null || echo -e "${YELLOW}⚠️  Plugin installation may need retry${NC}"
-
-# Restart Jenkins to load plugins
-echo -e "${YELLOW}🔄 Restarting Jenkins...${NC}"
-docker restart jenkins-server
-sleep 25
+# Note: Plugins will be installed through the setup wizard
+echo -e "${YELLOW}📦 Plugins will be installed via setup wizard${NC}"
+echo -e "${YELLOW}   Select 'Install suggested plugins' when prompted${NC}"
 
 # Test Docker access
 echo -e "${YELLOW}🧪 Testing Docker access...${NC}"
@@ -93,28 +82,125 @@ else
     echo -e "${YELLOW}⚠️  Docker setup may need manual configuration${NC}"
 fi
 
-# Get Jenkins password
-ADMIN_PASSWORD=$(docker exec jenkins-server cat /var/jenkins_home/secrets/initialAdminPassword 2>/dev/null || echo "admin")
+# Wait for Jenkins to fully initialize
+echo -e "${YELLOW}⏳ Waiting for Jenkins to fully initialize...${NC}"
+echo -e "${YELLOW}   This may take up to 2 minutes...${NC}"
 
 # Wait for Jenkins web interface
-echo -e "${YELLOW}⏳ Waiting for Jenkins web interface...${NC}"
-for i in {1..15}; do
+for i in {1..30}; do
     if curl -s ${JENKINS_URL} >/dev/null 2>&1; then
+        echo -e "${GREEN}✅ Jenkins web interface is up${NC}"
         break
     fi
     echo -n "."
-    sleep 2
+    sleep 3
 done
 echo ""
+
+# Wait a bit more for Jenkins to fully start
+sleep 10
+
+# Wait for initial admin password file to be created
+echo -e "${YELLOW}🔑 Retrieving initial admin password...${NC}"
+ADMIN_PASSWORD=""
+for i in {1..40}; do
+    # Check if password file exists
+    if docker exec jenkins-server test -f /var/jenkins_home/secrets/initialAdminPassword 2>/dev/null; then
+        ADMIN_PASSWORD=$(docker exec jenkins-server cat /var/jenkins_home/secrets/initialAdminPassword 2>/dev/null || echo "")
+        if [ ! -z "$ADMIN_PASSWORD" ]; then
+            echo -e "${GREEN}✅ Password retrieved successfully${NC}"
+            break
+        fi
+    fi
+    
+    # Check if Jenkins is fully started
+    if docker logs jenkins-server 2>&1 | grep -q "Jenkins is fully up and running"; then
+        # Jenkins is up, try to get password
+        ADMIN_PASSWORD=$(docker exec jenkins-server cat /var/jenkins_home/secrets/initialAdminPassword 2>/dev/null || echo "")
+        if [ ! -z "$ADMIN_PASSWORD" ]; then
+            echo -e "${GREEN}✅ Password retrieved from logs${NC}"
+            break
+        fi
+    fi
+    
+    echo -n "."
+    sleep 3
+done
+echo ""
+
+# If still no password, provide manual instructions
+if [ -z "$ADMIN_PASSWORD" ]; then
+    echo -e "${YELLOW}⚠️  Password file not found. Checking Jenkins logs...${NC}"
+    
+    # Try to extract password from logs
+    LOG_PASSWORD=$(docker logs jenkins-server 2>&1 | grep -A 5 "Please use the following password" | grep -oP '\*{10,}' | head -1)
+    
+    if [ ! -z "$LOG_PASSWORD" ]; then
+        ADMIN_PASSWORD=$LOG_PASSWORD
+        echo -e "${GREEN}✅ Password found in logs${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Could not retrieve password automatically${NC}"
+        echo -e "${BLUE}   Run this command to get it:${NC}"
+        echo -e "${BLUE}   docker exec jenkins-server cat /var/jenkins_home/secrets/initialAdminPassword${NC}"
+        echo ""
+        echo -e "${BLUE}   Or check the logs:${NC}"
+        echo -e "${BLUE}   docker logs jenkins-server 2>&1 | grep -A 5 'password'${NC}"
+        ADMIN_PASSWORD="<see-commands-above>"
+    fi
+fi
 
 # Final instructions
 echo ""
 echo -e "${GREEN}🎉 Jenkins is ready!${NC}"
 echo ""
-echo -e "${BLUE}📋 Access Jenkins:${NC}"
-echo -e "  🌐 URL: ${JENKINS_URL}"
-echo -e "  👤 Username: admin"
-echo -e "  🔑 Password: ${ADMIN_PASSWORD}"
+
+if [ "$ADMIN_PASSWORD" == "<see-commands-above>" ]; then
+    echo -e "${YELLOW}📋 Manual Password Retrieval Needed:${NC}"
+    echo ""
+    echo -e "  ${BLUE}Method 1 - From file:${NC}"
+    echo -e "  docker exec jenkins-server cat /var/jenkins_home/secrets/initialAdminPassword"
+    echo ""
+    echo -e "  ${BLUE}Method 2 - From logs:${NC}"
+    echo -e "  docker logs jenkins-server 2>&1 | grep -B 2 -A 5 'password'"
+    echo ""
+    echo -e "  ${BLUE}Method 3 - Check web UI:${NC}"
+    echo -e "  Open ${JENKINS_URL} - password may be shown there"
+    echo ""
+else
+    echo -e "${BLUE}📋 First Time Setup (Follow these steps):${NC}"
+    echo ""
+    echo -e "  ${YELLOW}Step 1:${NC} Open ${JENKINS_URL} in your browser"
+    echo ""
+    echo -e "  ${YELLOW}Step 2:${NC} Enter Initial Admin Password:"
+    echo -e "           ${GREEN}${ADMIN_PASSWORD}${NC}"
+    echo ""
+    echo -e "  ${YELLOW}Step 3:${NC} Click ${GREEN}'Install suggested plugins'${NC}"
+    echo -e "           (This installs Git, Pipeline, Docker, and other essential plugins)"
+    echo -e "           Wait ~2-3 minutes for installation to complete"
+    echo ""
+    echo -e "  ${YELLOW}Step 4:${NC} Create your admin user:"
+    echo -e "           - Username: (your choice, e.g., 'admin')"
+    echo -e "           - Password: (choose a strong password)"
+    echo -e "           - Full name: (your name)"
+    echo -e "           - Email: (your email)"
+    echo ""
+    echo -e "  ${YELLOW}Step 5:${NC} Configure Jenkins URL"
+    echo -e "           Keep default: ${JENKINS_URL}"
+    echo ""
+    echo -e "  ${YELLOW}Step 6:${NC} Click ${GREEN}'Start using Jenkins'${NC}"
+    echo ""
+    echo -e "${YELLOW}💡 IMPORTANT - SAVE THIS PASSWORD:${NC} ${GREEN}${ADMIN_PASSWORD}${NC}"
+    echo ""
+fi
+
+echo -e "${BLUE}🔧 Useful Commands:${NC}"
+echo -e "  Get password:  docker exec jenkins-server cat /var/jenkins_home/secrets/initialAdminPassword"
+echo -e "  View logs:     docker logs jenkins-server -f"
+echo -e "  Stop Jenkins:  docker-compose down"
+echo -e "  Start Jenkins: docker-compose up -d"
+echo -e "  Reset Jenkins: ./reset-jenkins.sh"
+echo ""
+echo -e "${GREEN}🚀 Ready to build!${NC}"
 echo ""
 echo -e "${BLUE}📋 Create Pipeline:${NC}"
 echo -e "  1. Open ${JENKINS_URL} in your browser"
