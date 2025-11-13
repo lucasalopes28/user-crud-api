@@ -21,7 +21,7 @@ Webhooks trigger Jenkins immediately when you push to GitHub.
 
 ### Step 1: Install Jenkins Plugins
 
-1. Go to Jenkins: `http://localhost:9090`
+1. Go to Jenkins: `http://localhost:8090`
 2. Click **"Manage Jenkins"** → **"Manage Plugins"**
 3. Go to **"Available"** tab
 4. Search and install:
@@ -92,7 +92,7 @@ Webhooks trigger Jenkins immediately when you push to GitHub.
 1. Go to your GitHub repository
 2. Click **"Settings"** → **"Webhooks"** → **"Add webhook"**
 3. Configure:
-   - **Payload URL**: `http://your-jenkins-url:9090/github-webhook/`
+   - **Payload URL**: `http://your-jenkins-url:8090/github-webhook/`
    - **Content type**: `application/json`
    - **Secret**: Leave empty (or add for security)
    - **Which events**: Select "Just the push event"
@@ -107,7 +107,7 @@ brew install ngrok  # macOS
 # or download from https://ngrok.com/download
 
 # Start ngrok tunnel
-ngrok http 9090
+ngrok http 8090
 
 # Copy the HTTPS URL (e.g., https://abc123.ngrok.io)
 # Use this URL in GitHub webhook: https://abc123.ngrok.io/github-webhook/
@@ -244,7 +244,7 @@ In GitHub webhook settings, restrict to Jenkins IP address.
 
 **Check:**
 1. Jenkins is accessible from internet
-2. Webhook URL is correct: `http://your-jenkins:9090/github-webhook/`
+2. Webhook URL is correct: `http://your-jenkins:8090/github-webhook/`
 3. GitHub webhook shows `200 OK` in Recent Deliveries
 4. Jenkins job has "GitHub hook trigger" enabled
 5. Firewall allows incoming connections
@@ -252,7 +252,7 @@ In GitHub webhook settings, restrict to Jenkins IP address.
 **Test:**
 ```bash
 # Test Jenkins webhook endpoint
-curl -X POST http://localhost:9090/github-webhook/
+curl -X POST http://localhost:8090/github-webhook/
 ```
 
 ### Polling Not Working
@@ -326,7 +326,7 @@ After setup, verify:
 #    - Add Git repository
 #    - Enable "GitHub hook trigger for GITScm polling"
 # 5. Add webhook to GitHub:
-#    - URL: http://your-jenkins:9090/github-webhook/
+#    - URL: http://your-jenkins:8090/github-webhook/
 #    - Content type: application/json
 # 6. Test with a push
 git commit -m "Test" --allow-empty
