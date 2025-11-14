@@ -101,4 +101,76 @@ class UserControllerTest {
 
         verify(userService).deleteUser(1L);
     }
+
+    @Test
+    void getUserById_WhenUserNotFound_ShouldReturnNotFound() throws Exception {
+        // Given
+        when(userService.getUserById(999L)).thenReturn(Optional.empty());
+
+        // When & Then
+        mockMvc.perform(get("/api/users/999"))
+                .andExpect(status().isNotFound());
+
+        verify(userService).getUserById(999L);
+    }
+
+    @Test
+    void createUser_WithInvalidData_ShouldReturnBadRequest() throws Exception {
+        // Given
+        User newUser = new User("Jane Doe", "jane@example.com", "0987654321");
+        when(userService.createUser(any(User.class))).thenThrow(new RuntimeException("Email already exists"));
+
+        // When & Then
+        mockMvc.perform(post("/api/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(newUser)))
+                .andExpect(status().isBadRequest());
+
+        verify(userService).createUser(any(User.class));
+    }
+
+    @Test
+    void updateUser_WithValidData_ShouldUpdateUser() throws Exception {
+        // Given
+        User updatedUser = new User("John Updated", "john@example.com", "9999999999");
+        updatedUser.setId(1L);
+        when(userService.updateUser(eq(1L), any(User.class))).thenReturn(updatedUser);
+
+        // When & Then
+        mockMvc.perform(put("/api/users/1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(updatedUser)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.name").value("John Updated"));
+
+        verify(userService).updateUser(eq(1L), any(User.class));
+    }
+
+    @Test
+    void updateUser_WhenUserNotFound_ShouldReturnNotFound() throws Exception {
+        // Given
+        User updatedUser = new User("John Updated", "john@example.com", "9999999999");
+        when(userService.updateUser(eq(999L), any(User.class))).thenThrow(new RuntimeException("User not found"));
+
+        // When & Then
+        mockMvc.perform(put("/api/users/999")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(updatedUser)))
+                .andExpect(status().isNotFound());
+
+        verify(userService).updateUser(eq(999L), any(User.class));
+    }
+
+    @Test
+    void deleteUser_WhenUserNotFound_ShouldReturnNotFound() throws Exception {
+        // Given
+        doThrow(new RuntimeException("User not found")).when(userService).deleteUser(999L);
+
+        // When & Then
+        mockMvc.perform(delete("/api/users/999"))
+                .andExpect(status().isNotFound());
+
+        verify(userService).deleteUser(999L);
+    }
 }

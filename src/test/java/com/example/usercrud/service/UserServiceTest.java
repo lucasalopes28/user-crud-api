@@ -93,4 +93,82 @@ class UserServiceTest {
         verify(userRepository).findById(1L);
         verify(userRepository).save(testUser);
     }
+
+    @Test
+    void createUser_WhenEmailExists_ShouldThrowException() {
+        // Given
+        when(userRepository.existsByEmail("john@example.com")).thenReturn(true);
+
+        // When & Then
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+            userService.createUser(testUser);
+        });
+
+        assertEquals("Email already exists", exception.getMessage());
+        verify(userRepository).existsByEmail("john@example.com");
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void updateUser_WhenUserNotFound_ShouldThrowException() {
+        // Given
+        User updatedDetails = new User("John Updated", "john@example.com", "9999999999");
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+        // When & Then
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+            userService.updateUser(999L, updatedDetails);
+        });
+
+        assertTrue(exception.getMessage().contains("User not found"));
+        verify(userRepository).findById(999L);
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void updateUser_WhenEmailChangedAndExists_ShouldThrowException() {
+        // Given
+        User updatedDetails = new User("John Updated", "newemail@example.com", "9999999999");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.existsByEmail("newemail@example.com")).thenReturn(true);
+
+        // When & Then
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+            userService.updateUser(1L, updatedDetails);
+        });
+
+        assertEquals("Email already exists", exception.getMessage());
+        verify(userRepository).findById(1L);
+        verify(userRepository).existsByEmail("newemail@example.com");
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void deleteUser_WhenUserExists_ShouldDeleteUser() {
+        // Given
+        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        doNothing().when(userRepository).delete(testUser);
+
+        // When
+        userService.deleteUser(1L);
+
+        // Then
+        verify(userRepository).findById(1L);
+        verify(userRepository).delete(testUser);
+    }
+
+    @Test
+    void deleteUser_WhenUserNotFound_ShouldThrowException() {
+        // Given
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+        // When & Then
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+            userService.deleteUser(999L);
+        });
+
+        assertTrue(exception.getMessage().contains("User not found"));
+        verify(userRepository).findById(999L);
+        verify(userRepository, never()).delete(any(User.class));
+    }
 }

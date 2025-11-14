@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.example.usercrud.controller.UserControllerTest
+-------------------------------------------------------------------------------
+Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.731 s -- in com.example.usercrud.controller.UserControllerTest

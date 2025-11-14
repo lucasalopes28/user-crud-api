@@ -1,0 +1,4 @@
+com/example/usercrud/model/UserTest.class
+com/example/usercrud/service/UserServiceTest.class
+com/example/usercrud/UserCrudApplicationTest.class
+com/example/usercrud/controller/UserControllerTest.class

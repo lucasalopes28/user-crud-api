@@ -26,7 +26,7 @@ pipeline {
         
         stage('Run Unit Tests') {
             steps {
-                echo '🧪 Running unit tests...'
+                echo '🧪 Running unit tests with coverage check...'
                 script {
                     try {
                         // Run tests using Docker build
@@ -64,6 +64,33 @@ pipeline {
                             archiveArtifacts artifacts: 'target/surefire-reports/**', allowEmptyArchive: true
                         } else {
                             echo "No test reports to publish"
+                        }
+                        
+                        // Publish JaCoCo coverage report
+                        if (fileExists('target/site/jacoco')) {
+                            publishHTML([
+                                allowMissing: false,
+                                alwaysLinkToLastBuild: true,
+                                keepAll: true,
+                                reportDir: 'target/site/jacoco',
+                                reportFiles: 'index.html',
+                                reportName: 'JaCoCo Coverage Report'
+                            ])
+                            archiveArtifacts artifacts: 'target/site/jacoco/**', allowEmptyArchive: true
+                            
+                            // Check coverage threshold
+                            sh """
+                                if [ -f target/site/jacoco/index.html ]; then
+                                    COVERAGE=\$(sed -n '/<tfoot>/,/<\\/tfoot>/p' target/site/jacoco/index.html | grep -o '[0-9]\\+%' | head -1 | tr -d '%')
+                                    echo "Code Coverage: \${COVERAGE}%"
+                                    if [ "\$COVERAGE" -lt 80 ]; then
+                                        echo "❌ Coverage \${COVERAGE}% is below the required 80% threshold"
+                                        exit 1
+                                    else
+                                        echo "✅ Coverage \${COVERAGE}% meets the 80% threshold"
+                                    fi
+                                fi
+                            """
                         }
                     }
                 }

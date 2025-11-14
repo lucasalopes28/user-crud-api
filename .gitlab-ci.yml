@@ -37,19 +37,32 @@ unit-tests:
   stage: test
   image: maven:3.9-eclipse-temurin-21
   script:
-    - echo "Running unit tests..."
-    - mvn clean test
-    - echo "✅ Unit tests passed"
+    - echo "Running unit tests with coverage check..."
+    - mvn clean test jacoco:report
+    - echo "Checking coverage threshold..."
+    - |
+      COVERAGE=$(sed -n '/<tfoot>/,/<\/tfoot>/p' target/site/jacoco/index.html | grep -o '[0-9]\+%' | head -1 | tr -d '%')
+      echo "Code Coverage: ${COVERAGE}%"
+      if [ "$COVERAGE" -lt 80 ]; then
+        echo "❌ Coverage ${COVERAGE}% is below the required 80% threshold"
+        exit 1
+      else
+        echo "✅ Coverage ${COVERAGE}% meets the 80% threshold"
+      fi
+    - echo "✅ Unit tests passed with sufficient coverage"
   artifacts:
     when: always
     reports:
       junit:
         - target/surefire-reports/TEST-*.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: target/site/jacoco/jacoco.xml
     paths:
       - target/surefire-reports/
       - target/site/jacoco/
     expire_in: 1 week
-  coverage: '/Total.*?([0-9]{1,3})%/'
+  coverage: '/Code Coverage: ([0-9]{1,3})%/'
   only:
     - branches
     - merge_requests
