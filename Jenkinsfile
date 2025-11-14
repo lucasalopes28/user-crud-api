@@ -26,25 +26,25 @@ pipeline {
         
         stage('Run Unit Tests') {
             steps {
-                echo '🧪 Running unit tests with coverage check...'
                 script {
+                    echo '🧪 Running unit tests with coverage check...'
+                    
                     try {
-                        // Run tests using Docker build
+                        // Build Docker image with tests
+                        echo 'Building Docker image with tests...'
+                        sh "docker build --target build -t ${APP_NAME}-test:${BUILD_NUMBER} ."
+                        
+                        // Extract test results
+                        echo 'Extracting test results from Docker image...'
                         sh """
-                            echo "Building Docker image with tests..."
-                            
-                            # Build image which runs tests as part of the build process
-                            docker build --target build -t ${APP_NAME}-test:${BUILD_NUMBER} .
-                            
-                            # Extract test results from the build image
                             docker create --name test-extract-${BUILD_NUMBER} ${APP_NAME}-test:${BUILD_NUMBER}
                             docker cp test-extract-${BUILD_NUMBER}:/app/target ./target || echo "Could not extract test results"
                             docker rm test-extract-${BUILD_NUMBER}
-                            
-                            echo "✅ Unit tests passed"
                         """
+                        
+                        echo '✅ Unit tests passed'
                     } catch (Exception e) {
-                        echo "⚠️ Tests failed or had errors"
+                        echo '⚠️ Tests failed or had errors'
                         sh """
                             if [ -d target/surefire-reports ]; then
                                 echo "Test reports:"
@@ -59,35 +59,44 @@ pipeline {
             post {
                 always {
                     script {
+                        // Publish test results
+                        echo 'Publishing test results...'
                         if (fileExists('target/surefire-reports')) {
                             junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
                             archiveArtifacts artifacts: 'target/surefire-reports/**', allowEmptyArchive: true
                         } else {
-                            echo "No test reports to publish"
+                            echo 'No test reports to publish'
                         }
                         
-                        // Archive JaCoCo coverage report
+                        // Archive and check coverage
                         if (fileExists('target/site/jacoco')) {
-                            echo "📊 Archiving JaCoCo coverage report..."
+                            echo '📊 Archiving JaCoCo coverage report...'
                             archiveArtifacts artifacts: 'target/site/jacoco/**', allowEmptyArchive: true
                             
-                            // Check coverage threshold
-                            sh """
-                                if [ -f target/site/jacoco/index.html ]; then
-                                    COVERAGE=\$(sed -n '/<tfoot>/,/<\\/tfoot>/p' target/site/jacoco/index.html | grep -o '[0-9]\\+%' | head -1 | tr -d '%')
-                                    echo "📊 Code Coverage: \${COVERAGE}%"
-                                    if [ "\$COVERAGE" -lt 80 ]; then
-                                        echo "❌ Coverage \${COVERAGE}% is below the required 80% threshold"
-                                        exit 1
+                            echo 'Checking coverage threshold...'
+                            def coverageCheck = sh(
+                                script: """
+                                    if [ -f target/site/jacoco/index.html ]; then
+                                        COVERAGE=\$(sed -n '/<tfoot>/,/<\\/tfoot>/p' target/site/jacoco/index.html | grep -o '[0-9]\\+%' | head -1 | tr -d '%')
+                                        echo "📊 Code Coverage: \${COVERAGE}%"
+                                        if [ "\$COVERAGE" -lt 80 ]; then
+                                            echo "❌ Coverage \${COVERAGE}% is below the required 80% threshold"
+                                            exit 1
+                                        else
+                                            echo "✅ Coverage \${COVERAGE}% meets the 80% threshold"
+                                        fi
                                     else
-                                        echo "✅ Coverage \${COVERAGE}% meets the 80% threshold"
+                                        echo "⚠️  Coverage report not found, skipping threshold check"
                                     fi
-                                else
-                                    echo "⚠️  Coverage report not found, skipping threshold check"
-                                fi
-                            """
+                                """,
+                                returnStatus: true
+                            )
+                            
+                            if (coverageCheck != 0) {
+                                error('Coverage threshold not met')
+                            }
                         } else {
-                            echo "⚠️  No coverage reports to archive"
+                            echo '⚠️  No coverage reports to archive'
                         }
                     }
                 }
@@ -96,10 +105,13 @@ pipeline {
         
         stage('Build Docker Image') {
             steps {
-                echo '🐳 Building Docker image...'
                 script {
+                    echo '🐳 Building Docker image...'
                     sh "docker build -t ${IMAGE_TAG} ."
+                    
+                    echo 'Tagging image as latest...'
                     sh "docker tag ${IMAGE_TAG} ${APP_NAME}:latest"
+                    
                     echo "✅ Docker image built: ${IMAGE_TAG}"
                     sh "docker images | grep ${APP_NAME}"
                 }
@@ -123,34 +135,34 @@ pipeline {
         
         stage('Deploy to Staging') {
             steps {
-                echo '🚀 Deploying to staging...'
                 script {
+                    echo '🚀 Deploying to staging...'
+                    
+                    echo 'Stopping existing staging container...'
                     sh """
-                        # Stop existing staging container
                         docker stop ${APP_NAME}-staging 2>/dev/null || true
                         docker rm ${APP_NAME}-staging 2>/dev/null || true
-                        
-                        # Run new staging container
+                    """
+                    
+                    echo 'Starting new staging container...'
+                    sh """
                         docker run -d \
                             --name ${APP_NAME}-staging \
                             -p ${STAGING_PORT}:8080 \
                             -e SPRING_PROFILES_ACTIVE=staging \
                             ${IMAGE_TAG}
-                        
-                        echo "✅ Staging deployed on port ${STAGING_PORT}"
                     """
                     
-                    // Wait and check health
-                    sh """
-                        echo "Waiting for application to start..."
-                        sleep 30
-                        
-                        echo "Container status:"
-                        docker ps | grep ${APP_NAME}-staging
-                        
-                        echo "Testing health endpoint:"
-                        curl -f http://localhost:${STAGING_PORT}/actuator/health || echo "⚠️  Health check pending"
-                    """
+                    echo "✅ Staging deployed on port ${STAGING_PORT}"
+                    
+                    echo 'Waiting for application to start...'
+                    sh 'sleep 30'
+                    
+                    echo 'Checking container status...'
+                    sh "docker ps | grep ${APP_NAME}-staging"
+                    
+                    echo 'Testing health endpoint...'
+                    sh "curl -f http://localhost:${STAGING_PORT}/actuator/health || echo '⚠️  Health check pending'"
                 }
             }
         }
@@ -174,33 +186,33 @@ pipeline {
                     input message: 'Deploy to Production?', ok: 'Deploy'
                     
                     echo '🚀 Deploying to production...'
+                    
+                    echo 'Stopping existing production container...'
                     sh """
-                        # Stop existing production container
                         docker stop ${APP_NAME}-prod 2>/dev/null || true
                         docker rm ${APP_NAME}-prod 2>/dev/null || true
-                        
-                        # Run new production container
+                    """
+                    
+                    echo 'Starting new production container...'
+                    sh """
                         docker run -d \
                             --name ${APP_NAME}-prod \
                             -p ${PROD_PORT}:8080 \
                             -e SPRING_PROFILES_ACTIVE=prod \
                             --restart unless-stopped \
                             ${IMAGE_TAG}
-                        
-                        echo "✅ Production deployed on port ${PROD_PORT}"
                     """
                     
-                    // Wait and check health
-                    sh """
-                        echo "Waiting for production to start..."
-                        sleep 30
-                        
-                        echo "Container status:"
-                        docker ps | grep ${APP_NAME}-prod
-                        
-                        echo "Testing health endpoint:"
-                        curl -f http://localhost:${PROD_PORT}/actuator/health || echo "⚠️  Health check pending"
-                    """
+                    echo "✅ Production deployed on port ${PROD_PORT}"
+                    
+                    echo 'Waiting for production to start...'
+                    sh 'sleep 30'
+                    
+                    echo 'Checking container status...'
+                    sh "docker ps | grep ${APP_NAME}-prod"
+                    
+                    echo 'Testing health endpoint...'
+                    sh "curl -f http://localhost:${PROD_PORT}/actuator/health || echo '⚠️  Health check pending'"
                 }
             }
         }
