@@ -50,10 +50,12 @@ This will automatically fail if coverage is below 80%.
 The Jenkins pipeline includes:
 - Automated test execution with coverage report generation
 - Coverage threshold validation (fails if < 80%)
-- JaCoCo HTML report publishing
-- Coverage artifacts archiving
+- Coverage artifacts archiving (download from build artifacts)
+- Optional HTML report publishing (requires HTML Publisher plugin)
 
 **Key Stage**: `Run Unit Tests`
+
+**Note**: See [JENKINS_COVERAGE_SETUP.md](JENKINS_COVERAGE_SETUP.md) for detailed Jenkins configuration and troubleshooting.
 
 ### 3. GitLab CI (.gitlab-ci.yml)
 The GitLab CI pipeline includes:

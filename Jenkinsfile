@@ -66,31 +66,28 @@ pipeline {
                             echo "No test reports to publish"
                         }
                         
-                        // Publish JaCoCo coverage report
+                        // Archive JaCoCo coverage report
                         if (fileExists('target/site/jacoco')) {
-                            publishHTML([
-                                allowMissing: false,
-                                alwaysLinkToLastBuild: true,
-                                keepAll: true,
-                                reportDir: 'target/site/jacoco',
-                                reportFiles: 'index.html',
-                                reportName: 'JaCoCo Coverage Report'
-                            ])
+                            echo "📊 Archiving JaCoCo coverage report..."
                             archiveArtifacts artifacts: 'target/site/jacoco/**', allowEmptyArchive: true
                             
                             // Check coverage threshold
                             sh """
                                 if [ -f target/site/jacoco/index.html ]; then
                                     COVERAGE=\$(sed -n '/<tfoot>/,/<\\/tfoot>/p' target/site/jacoco/index.html | grep -o '[0-9]\\+%' | head -1 | tr -d '%')
-                                    echo "Code Coverage: \${COVERAGE}%"
+                                    echo "📊 Code Coverage: \${COVERAGE}%"
                                     if [ "\$COVERAGE" -lt 80 ]; then
                                         echo "❌ Coverage \${COVERAGE}% is below the required 80% threshold"
                                         exit 1
                                     else
                                         echo "✅ Coverage \${COVERAGE}% meets the 80% threshold"
                                     fi
+                                else
+                                    echo "⚠️  Coverage report not found, skipping threshold check"
                                 fi
                             """
+                        } else {
+                            echo "⚠️  No coverage reports to archive"
                         }
                     }
                 }
