@@ -201,3 +201,4 @@ git push origin v1.0.0
 ```
 
 The pipeline will then continue from v1.0.0 → v1.0.1 → v1.0.2...
+
