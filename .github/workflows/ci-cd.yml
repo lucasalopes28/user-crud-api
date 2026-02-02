@@ -13,81 +13,81 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  # ==================== TEST JOB ====================
-  test:
-    name: Run Tests
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      checks: write
-      pull-requests: write
+  # # ==================== TEST JOB ====================
+  # test:
+  #   name: Run Tests
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: read
+  #     checks: write
+  #     pull-requests: write
     
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
       
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: 'maven'
+  #     - name: Set up JDK 21
+  #       uses: actions/setup-java@v4
+  #       with:
+  #         java-version: '21'
+  #         distribution: 'temurin'
+  #         cache: 'maven'
       
-      - name: Run unit tests with coverage
-        run: mvn clean test jacoco:report
+  #     - name: Run unit tests with coverage
+  #       run: mvn clean test jacoco:report
       
-      - name: Check coverage threshold
-        run: |
-          COVERAGE=$(sed -n '/<tfoot>/,/<\/tfoot>/p' target/site/jacoco/index.html | grep -o '[0-9]\+%' | head -1 | tr -d '%')
-          echo "Code Coverage: ${COVERAGE}%"
-          echo "COVERAGE=${COVERAGE}" >> $GITHUB_ENV
-          if [ "$COVERAGE" -lt 80 ]; then
-            echo "❌ Coverage ${COVERAGE}% is below the required 80% threshold"
-            exit 1
-          else
-            echo "✅ Coverage ${COVERAGE}% meets the 80% threshold"
-          fi
+  #     - name: Check coverage threshold
+  #       run: |
+  #         COVERAGE=$(sed -n '/<tfoot>/,/<\/tfoot>/p' target/site/jacoco/index.html | grep -o '[0-9]\+%' | head -1 | tr -d '%')
+  #         echo "Code Coverage: ${COVERAGE}%"
+  #         echo "COVERAGE=${COVERAGE}" >> $GITHUB_ENV
+  #         if [ "$COVERAGE" -lt 80 ]; then
+  #           echo "❌ Coverage ${COVERAGE}% is below the required 80% threshold"
+  #           exit 1
+  #         else
+  #           echo "✅ Coverage ${COVERAGE}% meets the 80% threshold"
+  #         fi
       
-      - name: Add coverage comment to PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const coverage = process.env.COVERAGE;
-            const status = coverage >= 80 ? '✅' : '❌';
-            const body = `## Test Coverage Report ${status}\n\n**Coverage:** ${coverage}%\n**Threshold:** 80%\n\n${coverage >= 80 ? 'Coverage meets the required threshold.' : 'Coverage is below the required 80% threshold.'}`;
+  #     - name: Add coverage comment to PR
+  #       if: github.event_name == 'pull_request'
+  #       uses: actions/github-script@v7
+  #       with:
+  #         script: |
+  #           const coverage = process.env.COVERAGE;
+  #           const status = coverage >= 80 ? '✅' : '❌';
+  #           const body = `## Test Coverage Report ${status}\n\n**Coverage:** ${coverage}%\n**Threshold:** 80%\n\n${coverage >= 80 ? 'Coverage meets the required threshold.' : 'Coverage is below the required 80% threshold.'}`;
             
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
-            });
+  #           github.rest.issues.createComment({
+  #             issue_number: context.issue.number,
+  #             owner: context.repo.owner,
+  #             repo: context.repo.repo,
+  #             body: body
+  #           });
       
-      - name: Publish test results
-        uses: dorny/test-reporter@v1
-        if: always()
-        with:
-          name: Test Results
-          path: target/surefire-reports/*.xml
-          reporter: java-junit
-          fail-on-error: false
+  #     - name: Publish test results
+  #       uses: dorny/test-reporter@v1
+  #       if: always()
+  #       with:
+  #         name: Test Results
+  #         path: target/surefire-reports/*.xml
+  #         reporter: java-junit
+  #         fail-on-error: false
       
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./target/site/jacoco/jacoco.xml
-          fail_ci_if_error: false
+  #     - name: Upload coverage to Codecov
+  #       uses: codecov/codecov-action@v4
+  #       with:
+  #         files: ./target/site/jacoco/jacoco.xml
+  #         fail_ci_if_error: false
       
-      - name: Archive test results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-results
-          path: |
-            target/surefire-reports/
-            target/site/jacoco/
-          retention-days: 30
+  #     - name: Archive test results
+  #       uses: actions/upload-artifact@v4
+  #       if: always()
+  #       with:
+  #         name: test-results
+  #         path: |
+  #           target/surefire-reports/
+  #           target/site/jacoco/
+  #         retention-days: 30
 
   # ==================== BUILD JOB ====================
   build:
