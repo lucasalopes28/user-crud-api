@@ -245,10 +245,14 @@ pipeline {
                         
                         echo "New version: \$NEW_VERSION"
                         
-                        # Create tag locally
-                        git tag -a \$NEW_VERSION -m "Jenkins build ${BUILD_NUMBER} - Auto-tagged by CI/CD pipeline"
-                        
-                        echo "✅ Tag \$NEW_VERSION created locally"
+                        # Check if tag already exists
+                        if git rev-parse "\$NEW_VERSION" >/dev/null 2>&1; then
+                            echo "⚠️  Tag \$NEW_VERSION already exists, skipping tag creation"
+                        else
+                            # Create tag locally
+                            git tag -a \$NEW_VERSION -m "Jenkins build ${BUILD_NUMBER} - Auto-tagged by CI/CD pipeline"
+                            echo "✅ Tag \$NEW_VERSION created locally"
+                        fi
                     """
                 }
             }
